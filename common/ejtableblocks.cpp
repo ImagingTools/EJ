@@ -2834,6 +2834,7 @@ void EjCellBlock::setText(const QString &source, EjTextControl *control)
             table->m_doc->lBlocks->insert(index,curBlock);
             table->m_counts++;
             index++;
+			str.append(txt.at(i));
         }
         else
             str.append(txt.at(i));
