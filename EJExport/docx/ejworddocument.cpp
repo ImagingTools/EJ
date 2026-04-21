@@ -67,18 +67,27 @@ void EjWordDocument::createSectPr() {
     QDomElement w_sectPr = document.createElement("w:sectPr");
     blocks[0].appendChild(w_sectPr);
 
-    QDomElement w_type = document.createElement("w:type");
-    w_type.setAttribute("w:val", "nextPage");
-    w_sectPr.appendChild(w_type);
-
     QDomElement w_pgSz = document.createElement("w:pgSz");
     if(landscape){
          w_pgSz.setAttribute("w:orient", "landscape");
-         w_pgSz.setAttribute("w:w", height);
-         w_pgSz.setAttribute("w:h", width);
+		if(width < height){
+			w_pgSz.setAttribute("w:w", height);
+			w_pgSz.setAttribute("w:h", width);
+		}
+		else{
+			w_pgSz.setAttribute("w:w", width);
+			w_pgSz.setAttribute("w:h", height);
+		}
     }else{
-        w_pgSz.setAttribute("w:w", width);
-        w_pgSz.setAttribute("w:h", height);
+		w_pgSz.setAttribute("w:orient", "portrait");
+		if(width > height){
+			w_pgSz.setAttribute("w:w", height);
+			w_pgSz.setAttribute("w:h", width);
+		}
+		else{
+			w_pgSz.setAttribute("w:w", width);
+			w_pgSz.setAttribute("w:h", height);
+		}
     }
     w_sectPr.appendChild(w_pgSz);
 

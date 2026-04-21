@@ -26,6 +26,26 @@ bool EjConvertorExcel::readDoc(EjDocument *doc){
     int maxIndexCol = utils.findMaxIndexColumnInDocumentByBlocks(*list);
 	sheet_document->setMaxIndexColForTable(maxIndexCol);
 
+	EjAttrProp* docAttributes = doc->attributes();
+	EjDocLayout* docLayout = docAttributes->getDocLayout();
+
+	int docHeight = docLayout->docHeight();
+	int docWidth = docLayout->docWidth();
+	EjDocLayout::Orientation docOrientation = docLayout->docOrientation();
+	sheet_document->setDocWidth(docWidth/100);
+	sheet_document->setDocHeight(docHeight/100);
+	sheet_document->setOrientation(docOrientation);
+
+	EjDocMargings* docMargins = docAttributes->getDocMargings();
+	int bottomMargin = docMargins->bottom();
+	int topMargin = docMargins->top();
+	int leftMargin = docMargins->left();
+	int rightMargin = docMargins->right();
+	sheet_document->setPageTopMargin(topMargin/100*0.0394);
+	sheet_document->setPageBottomMargin(bottomMargin/100*0.0394);
+	sheet_document->setPageLeftMargin(leftMargin/100*0.0394);
+	sheet_document->setPageRightMargin(rightMargin/100*0.0394);
+
     for(int i = 0; i < list->size(); i++){
 		EjBlock* block = list->at(i);
 		EjExcelDocumentWriter *editor =editors.value(block->type, nullptr);
