@@ -29,6 +29,13 @@ class EjSheetDocument {
 	int countStrCurrentTable = - 1;
 	bool activeTable = false;
 	int maxIndexColForTable = 1;
+	int pageOrientation = 0;
+	double paperWidth = 210.00;
+	double paperHeight = 297.00;
+	double pageTopMargin = 0.750;
+	double pageBottomMargin = 0.750;
+	double pageLeftMargin = 0.750;
+	double pageRightMargin = 0.750;
 
 	/*Ситуация аналогичная тексту, будем хранить id этих стилей,
       пока не встретим текстовый блоки, как встретим добавим текст сразу со стилями*/
@@ -61,6 +68,20 @@ public:
 	void setFillId(int value);
 	int getBorderId() const;
 	void setBorderId(int value);
+	double getDocWidth() const;
+	void setDocWidth(double width);
+	double getDocHeight() const;
+	void setDocHeight(double height);
+	int getOrientation() const;
+	void setOrientation(int orientation);
+	double getPageTopMargin() const;
+	void setPageTopMargin(double topMargin);
+	double getPageBottomMargin() const;
+	void setPageBottomMargin(double bottomMargin);
+	double getPageLeftMargin() const;
+	void setPageLeftMargin(double leftMargin);
+	double getPageRightMargin() const;
+	void setPageRightMargin(double rightMargin);
 };
 
 #endif // WORKSHEETS_DOCUMENT_H

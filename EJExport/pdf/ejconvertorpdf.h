@@ -10,20 +10,20 @@
 #include "ejpdfdocumenteditor.h"
 
 #include <QPainter>
-#include <QPrinter>
+#include <QPdfWriter>
+
 
 class EjConvertorPdf: public Convertor
 {
 	EjPdfDocument document;
-    QMap<quint8, EjPdfDocumentWriter*> editors;
-    bool write(EjDocument *doc,  QString file_name, QPrinter *printer = nullptr);
-    void setSettings(EjDocument *doc, QPrinter *printer);
+	QMap<quint8, EjPdfDocumentWriter*> editors;
+	bool write(EjDocument *doc,  QString file_name, QPdfWriter *writer = nullptr);
+	void setSettings(EjDocument *doc, QPdfWriter *writer);
 public:
-    const static QString format;
 	EjConvertorPdf();
 	~EjConvertorPdf();
-    bool convert(EjDocument *doc, QString const& file_name);
-    bool print(EjDocument *doc, QPrinter *printer);
+	bool convert(EjDocument *doc, QString const& file_name);
+	bool print(EjDocument *doc, QPdfWriter *writer);
 };
 
 #endif // EJCONVERTORPDF_H

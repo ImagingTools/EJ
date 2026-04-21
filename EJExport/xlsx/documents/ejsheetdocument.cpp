@@ -72,6 +72,104 @@ void EjSheetDocument::setBorderId(int value)
 }
 
 
+double EjSheetDocument::getDocWidth() const
+{
+	return paperWidth;
+}
+
+
+void EjSheetDocument::setDocWidth(double width)
+{
+	if (paperWidth != width){
+		paperWidth = width;
+	}
+}
+
+
+double EjSheetDocument::getDocHeight() const
+{
+	return paperHeight;
+}
+
+
+void EjSheetDocument::setDocHeight(double height)
+{
+	if (paperHeight != height){
+		paperHeight = height;
+	}
+}
+
+
+int EjSheetDocument::getOrientation() const
+{
+	return pageOrientation;
+}
+
+
+void EjSheetDocument::setOrientation(int orientation)
+{
+	if (pageOrientation != orientation){
+		pageOrientation = orientation;
+	}
+}
+
+
+double EjSheetDocument::getPageTopMargin() const
+{
+	return pageTopMargin;
+}
+
+
+void EjSheetDocument::setPageTopMargin(double topMargin)
+{
+	if (pageTopMargin != topMargin){
+		pageTopMargin = topMargin;
+	}
+}
+
+
+double EjSheetDocument::getPageBottomMargin() const
+{
+	return pageBottomMargin;
+}
+
+
+void EjSheetDocument::setPageBottomMargin(double bottomMargin)
+{
+	if (pageBottomMargin != bottomMargin){
+		pageBottomMargin = bottomMargin;
+	}
+}
+
+
+double EjSheetDocument::getPageLeftMargin() const
+{
+	return pageLeftMargin;
+}
+
+
+void EjSheetDocument::setPageLeftMargin(double leftMargin)
+{
+	if (pageLeftMargin != leftMargin){
+		pageLeftMargin = leftMargin;
+	}
+}
+
+
+double EjSheetDocument::getPageRightMargin() const
+{
+	return pageRightMargin;
+}
+
+
+void EjSheetDocument::setPageRightMargin(double rightMargin)
+{
+	if (pageRightMargin != rightMargin){
+		pageRightMargin = rightMargin;
+	}
+}
+
+
 EjSheetDocument::EjSheetDocument():
 	streamData(QByteArray())
 {
@@ -106,6 +204,13 @@ EjSheetDocument::~EjSheetDocument()
 	countStrCurrentTable = - 1;
 	activeTable = false;
 	maxIndexColForTable = 1;
+	pageOrientation = 0;
+	paperWidth = 210.00;
+	paperHeight = 297.00;
+	pageTopMargin = 0.750;
+	pageBottomMargin = 0.750;
+	pageLeftMargin = 0.750;
+	pageRightMargin = 0.750;
 }
 
 
@@ -373,6 +478,26 @@ QByteArray EjSheetDocument::getDocumentData()
 		documentWriter->writeEndElement();
 	}
 
+	documentWriter->writeStartElement("pageMargins");
+	documentWriter->writeAttribute("left", QString::number(pageLeftMargin));
+	documentWriter->writeAttribute("right", QString::number(pageRightMargin));
+	documentWriter->writeAttribute("top", QString::number(pageTopMargin));
+	documentWriter->writeAttribute("bottom", QString::number(pageBottomMargin));
+	documentWriter->writeAttribute("header", "0.3");
+	documentWriter->writeAttribute("footer", "0.3");
+	documentWriter->writeEndElement();
+
+	documentWriter->writeStartElement("pageSetup");
+	if (paperWidth == 210 && paperHeight == 297){
+		documentWriter->writeAttribute("paperSize", "9");
+	}
+	else{
+		documentWriter->writeAttribute("paperSize", "256");
+		documentWriter->writeAttribute("paperWidth", QString::number(paperWidth)+"mm");
+		documentWriter->writeAttribute("paperHeight", QString::number(paperHeight)+"mm");
+	}
+	documentWriter->writeAttribute("orientation", pageOrientation == 1 ? "landscape" : "portrait");
+	documentWriter->writeEndElement();
 	documentWriter->writeEndElement();
 	documentWriter->writeEndDocument();
 
