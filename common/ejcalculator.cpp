@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "ejcalculator.h"
 #include "ejtableblocks.h"
 #include "labelblock.h"
@@ -276,8 +283,8 @@ void EjCalculator::setLinkData(QString str_link, EjBlock *source)
 int EjCalculator::calcCell(EjCellBlock *cell, EjBlock *table)
 {
     int accuracy = 3;
-	if(cell->m_parent)
-		accuracy = ((EjTableBlock*)(cell->m_parent))->accuracy;
+	if(cell->EjBlock::parent != nullptr)
+		accuracy = ((EjTableBlock*)(cell->EjBlock::parent))->accuracy;
     QString formula = cell->formula();
     if(cell->type != EjCellBlock::CELL_FORMULA || formula.isEmpty())
     {
@@ -351,8 +358,8 @@ int EjCalculator::calcCell(EjCellBlock *cell, EjBlock *table)
   }
   shunting_yard(lItems,lItems_out);
   cell->value = execution_order(lItems_out);
-  if(cell->m_parent)
-	  accuracy = ((EjTableBlock*)(cell->m_parent))->accuracy;
+  if(cell->EjBlock::parent)
+	  accuracy = ((EjTableBlock*)(cell->EjBlock::parent))->accuracy;
   cell->setText(getDText(cell->value,accuracy));
   return 0;
 }

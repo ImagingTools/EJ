@@ -5,7 +5,7 @@
 //#include "jotplugin_global.h"
 
 
-class TextBlock : public GroupBlock
+class EjTextBlock : public GroupBlock
 {
 public:
     DiagramBlock();

@@ -1,7 +1,7 @@
 #ifndef REPORTDOC_H
 #define REPORTDOC_H
 #include <QString>
-#include "common.h"
+#include "ejcommon.h"
 
 #if defined(REPORT_LIBRARY)
 #  define REPORTSHARED_EXPORT Q_DECL_EXPORT
@@ -14,8 +14,8 @@ class REPORTSHARED_EXPORT ReportDoc
 
 public:
     ReportDoc();
-    bool createReport(Document *doc, QString vid);
-    bool createReport2(Document *doc, QString vid);
+    bool createReport(EjDocument *doc, QString vid);
+    bool createReport2(EjDocument *doc, QString vid);
 };
 
 #endif // REPORTDOC_H

@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef STANDART_FUNCTION_H
 #define STANDART_FUNCTION_H
 

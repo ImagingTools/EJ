@@ -1,13 +1,19 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef DOCPROPS_H
 #define DOCPROPS_H
 
 #include <QObject>
 #include <QList>
-#include <QGuiApplication>
-#include <QClipboard>
 #include "ejcommon.h"
+//#include "note.h"
 
-//class Task;
+// class Task;
 
 enum e_PropDoc
 {
@@ -58,7 +64,7 @@ public:
     int left();
     int right();
     MultiplePages multiplePages();
-	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
+    void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
 
 public slots:
     void setTop(int top);
@@ -91,8 +97,8 @@ class COMMONSHARED_EXPORT EjDocLayout : public QObject, public EjPropDoc
     Q_PROPERTY(Orientation docOrientation READ docOrientation WRITE setDocOrientation NOTIFY docOrientationChanged)
 
 public:
-	EjDocLayout(QObject *parent = nullptr);
-	~EjDocLayout();
+    EjDocLayout(QObject *parent = nullptr);
+    ~EjDocLayout();
     enum NumProp {
         DL_NUM = 0,
         DL_WIDTH,
@@ -108,7 +114,7 @@ public:
     int docWidth();
     int docHeight();
     Orientation docOrientation();
-	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
+    void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
 
 public slots:
     void setDocWidth(int width);
@@ -137,8 +143,8 @@ class COMMONSHARED_EXPORT EjLinkProp : public QObject, public EjPropDoc
     Q_PROPERTY(Status status READ status WRITE setStatus NOTIFY statusChanged)
 
 public:
-	EjLinkProp(QObject *parent = nullptr);
-	~EjLinkProp();
+    EjLinkProp(QObject *parent = nullptr);
+    ~EjLinkProp();
     enum NumProp {
         LINK_NUM      = 0,
         LINK_KEY,
@@ -161,6 +167,14 @@ public:
     };
     Q_ENUMS(Status)
 
+//    EjBlock* makeCopy() override;
+//    bool compare(const EjBlock &other) const override;
+//    void copy(EjLinkProp *link);
+//    void childCalc(EjBlock *child) override;
+
+//    int m_num;
+//    QUuid m_key;
+
     int num();
     Status status();
     QUuid keyUuid();
@@ -170,6 +184,8 @@ public:
     Q_INVOKABLE void copyLink64ToClipboard();
 
     EjDocument *m_extDoc;
+	// Task *m_extTask;
+//    void changeLink();
 
 public slots:
     void setNum(int num);
@@ -233,23 +249,23 @@ public:
     Q_INVOKABLE void copyLinkToClipboard();
     Q_INVOKABLE void addLink64FromClipboard();
     Q_INVOKABLE void copyLink64ToClipboard();
-	Q_INVOKABLE EjDocLayout* getDocLayout();
-	Q_INVOKABLE void setDocLayout(EjDocLayout* docLayout);
-	Q_INVOKABLE void copyDataLayout(EjDocLayout *result);
+    Q_INVOKABLE EjDocLayout* getDocLayout();
+    Q_INVOKABLE void setDocLayout(EjDocLayout* docLayout);
+    Q_INVOKABLE void copyDataLayout(EjDocLayout *result);
 	Q_INVOKABLE EjDocMargings* getDocMargings();
 	Q_INVOKABLE void setDocMargings(EjDocMargings* docMargings);
 	Q_INVOKABLE void copyDataMargings(EjDocMargings *result);
 
     Q_INVOKABLE QVariant getLinks();
-//	void changeLink();
+    void changeLink();
 
     void beforeCalc(EjCalcParams *calcParams) override;
-	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
+    void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
 
-	void addLink(QUuid uuidKey, EjLinkProp::TypeLink typeLink);
+    void addLink(QUuid uuidKey, EjLinkProp::TypeLink typeLink);
     void removeLink(QUuid uuidKey);
 
-	QList<EjLinkProp*> m_lLinks;
+    QList<EjLinkProp*> m_lLinks;
     qint16 m_patchKey;
     quint16 m_patchVer;
     quint32 m_patchTime;
@@ -274,8 +290,58 @@ signals:
     void editLevelChanged();
     void isEditAsParentChanged();
 protected:
-	EjDocLayout *m_docLayout;
+//    QUuid m_key;
+    EjDocLayout *m_docLayout;
 	EjDocMargings *m_docMargings;
 };
+
+//class INTERFACESHARED_EXPORT DocProps : public EjPropDoc, QObject
+//{
+////    Q_OBJECT
+//    Q_PROPERTY(QString keyDoc READ keyDoc WRITE setKeyDoc NOTIFY keyDocChanged)
+//    Q_PROPERTY(QString nameDoc READ nameDoc WRITE setNameDoc NOTIFY nameDocChanged)
+////    Q_PROPERTY(QString numDoc READ numDoc NOTIFY numDocChanged)
+
+//public:
+//    enum NumProp {
+//        DOC_KEY      = 0,
+//        DOC_NAME,
+//        DOC_LINK,
+//    };
+
+//    struct Link
+//    {
+//        Link(QUuid linkKey) { doc = NULL; key = linkKey; }
+//        ~Link();
+//        QUuid key;
+//        EjDocument *doc;
+//    };
+
+////    DocProps(QUuid docKey = QUuid());
+//    explicit DocProps(QObject *parent = nullptr);
+//    virtual ~DocProps();
+
+//    Q_INVOKABLE QVariant getLinks();
+////    void createDefault(QList<EjBlock*> *lBlocks, int index) override;
+////    virtual void beforeCalc(EjCalcParams *calcParams) override;
+////    virtual void afterCalc(EjCalcParams *calcParams) override;
+////    virtual void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
+//    void addLink(QUuid linkKey);
+//    void removeLink(QUuid linkKey);
+//    Q_INVOKABLE void removeLink(int index);
+//    Q_INVOKABLE void copyLinkToClipboard();
+//    Q_INVOKABLE void addLinkFromClipboard();
+////    QString numDoc() const;
+
+//    QUuid m_key;
+//    QList<Link*> *m_lLinks;
+//    QList<EjBlock*> *m_lBlocks;
+
+//signals:
+////    void numDocChanged();
+
+//protected:
+
+//};
 
 #endif // DOCPROPS_H

@@ -1,5 +1,5 @@
 #include "imageblock.h"
-#include "storagehelper.h"
+#include "ejstoragehelper.h"
 
 #include <QUrl>
 
@@ -11,11 +11,11 @@ ImageBlock::ImageBlock():GroupBlock()
     key = 0;
 }
 
-ImageBlock::ImageBlock(QImage &image, Document *doc, int index) : ImageBlock()
+ImageBlock::ImageBlock(QImage &image, EjDocument *doc, int index) : ImageBlock()
 {
     width = 4000;
     ascent = 3000;
-    StorageHelper::addImage(image,m_Name);
+    EjStorageHelper::addImage(image,m_Name);
     createDefault(doc->lBlocks,index);
 }
 
@@ -29,23 +29,23 @@ void ImageBlock::createDefault(QList<Block *> *lBlocks, int index)
     m_index = index;
     lBlocks->insert(index,this);
     index++;
-//    lBlocks->insert(index,new PropIntBlock(IMG_KEY));
-//    ((PropIntBlock*)lBlocks->at(index))->value = key;
+//    lBlocks->insert(index,new EjPropIntBlock(IMG_KEY));
+//    ((EjPropIntBlock*)lBlocks->at(index))->value = key;
 //    index++;
     qDebug() << "image1";
-    PropByteArrayBlock *propData = new PropByteArrayBlock(IMG_NAME);
+    EjPropByteArrayBlock *propData = new EjPropByteArrayBlock(IMG_NAME);
     qDebug() << "image2";
     propData->data = m_Name;
     lBlocks->insert(index,propData);
     index++;
     qDebug() << "image3";
-//    lBlocks->insert(index,new PropPntBlock(IMG_SIZE));
+//    lBlocks->insert(index,new EjPropPntBlock(IMG_SIZE));
 //    index++;
-//    lBlocks->insert(index,new PropInt8Block(IMG_VID));
+//    lBlocks->insert(index,new EjPropInt8Block(IMG_VID));
 //    index++;
-//    lBlocks->insert(index,new PropInt8Block(IMG_SHOW_BORDER));
+//    lBlocks->insert(index,new EjPropInt8Block(IMG_SHOW_BORDER));
 //    index++;
-//    lBlocks->insert(index,new PropInt8Block(IMG_INTERACTIVE));
+//    lBlocks->insert(index,new EjPropInt8Block(IMG_INTERACTIVE));
 //    index++;
     lBlocks->insert(index,new Block(END_GROUP,this));
     qDebug() << "image4";
@@ -60,16 +60,16 @@ void ImageBlock::createDefault(QList<Block *> *lBlocks, int index)
 void ImageBlock::childCalc(Block *child, CalcParams *calcParams)
 {
     Q_UNUSED(calcParams)
-    PropInt8Block *curInt8;
-    PropIntBlock *curInt;
+    EjPropInt8Block *curInt8;
+    EjPropIntBlock *curInt;
     switch (child->type) {
     case PROP_INT:
-        curInt = (PropIntBlock *)child;
+        curInt = (EjPropIntBlock *)child;
         if(curInt->num == IMG_KEY)
-            key = ((PropIntBlock*)child)->value;
+            key = ((EjPropIntBlock*)child)->value;
         break;
     case PROP_INT8:
-        curInt8 = (PropInt8Block *)child;
+        curInt8 = (EjPropInt8Block *)child;
         if(curInt8->num == IMG_INTERACTIVE)
             m_isInteractive = curInt8->value;
         else if(curInt8->num == IMG_VID)
@@ -78,11 +78,11 @@ void ImageBlock::childCalc(Block *child, CalcParams *calcParams)
             m_showBorders = curInt8->value;
         break;
     case PROP_PNT:
-        m_widthImage = dynamic_cast<PropPntBlock*>(child)->x_value;
-        m_heightImage = dynamic_cast<PropPntBlock*>(child)->y_value;
+        m_widthImage = dynamic_cast<EjPropPntBlock*>(child)->x_value;
+        m_heightImage = dynamic_cast<EjPropPntBlock*>(child)->y_value;
         break;
     case PROP_BA:
-        m_Name = ((PropByteArrayBlock *)child)->data;
+        m_Name = ((EjPropByteArrayBlock *)child)->data;
         break;
     default:
         break;
@@ -93,7 +93,7 @@ void ImageBlock::afterCalc(CalcParams *calcParams)
 {
     if(m_smallImage.isNull())
     {
-        StorageHelper::loadSmallImage(&m_smallImage,m_Name,m_isInteractive);
+        EjStorageHelper::loadSmallImage(&m_smallImage,m_Name,m_isInteractive);
 //                cur_imgBlock->width = cur_imgBlock->small_image.width() * 100 * 0.347;
 //                cur_imgBlock->height = cur_imgBlock->small_image.height() * 100 * 0.347;
         flag_redraw = true;
@@ -120,7 +120,7 @@ void ImageBlock::afterCalc(CalcParams *calcParams)
 
 void ImageBlock::setName(QList<Block*> *lBlocks, QByteArray source)
 {
-    PropByteArrayBlock *propBABlock =  dynamic_cast<PropByteArrayBlock*>(findProp(lBlocks,PROP_BA,IMG_NAME));
+    EjPropByteArrayBlock *propBABlock =  dynamic_cast<EjPropByteArrayBlock*>(findProp(lBlocks,PROP_BA,IMG_NAME));
     if(propBABlock)
     {
         m_Name = source;
@@ -143,10 +143,10 @@ void ImageBlock::setName(QList<Block*> *lBlocks, QByteArray source)
 
 void ImageBlock::setVid(int vid, QList<Block *> *lBlocks)
 {
-    PropInt8Block *curBlock = dynamic_cast<PropInt8Block*>(findProp(lBlocks,PROP_INT8,ImageBlock::IMG_VID));
+    EjPropInt8Block *curBlock = dynamic_cast<EjPropInt8Block*>(findProp(lBlocks,PROP_INT8,ImageBlock::IMG_VID));
     if(!curBlock)
     {
-        curBlock = new PropInt8Block(ImageBlock::IMG_VID);
+        curBlock = new EjPropInt8Block(ImageBlock::IMG_VID);
         addProp(lBlocks,curBlock);
     }
     m_vid = curBlock->value = static_cast<qint8>(vid);
@@ -155,10 +155,10 @@ void ImageBlock::setVid(int vid, QList<Block *> *lBlocks)
 
 void ImageBlock::setSize(int width, int height, QList<Block *> *lBlocks)
 {
-    PropPntBlock *curBlock = dynamic_cast<PropPntBlock*>(findProp(lBlocks,PROP_PNT,ImageBlock::IMG_SIZE));
+    EjPropPntBlock *curBlock = dynamic_cast<EjPropPntBlock*>(findProp(lBlocks,PROP_PNT,ImageBlock::IMG_SIZE));
     if(!curBlock)
     {
-        curBlock = new PropPntBlock(ImageBlock::IMG_SIZE);
+        curBlock = new EjPropPntBlock(ImageBlock::IMG_SIZE);
         addProp(lBlocks,curBlock);
     }
     m_widthImage = curBlock->x_value = width;
@@ -180,10 +180,10 @@ void ImageBlock::setSize(int width, int height, QList<Block *> *lBlocks)
 
 void ImageBlock::setIsInteractive(bool isInteractive, QList<Block *> *lBlocks)
 {
-    PropInt8Block *curBlock = dynamic_cast<PropInt8Block*>(findProp(lBlocks,PROP_INT8,ImageBlock::IMG_INTERACTIVE));
+    EjPropInt8Block *curBlock = dynamic_cast<EjPropInt8Block*>(findProp(lBlocks,PROP_INT8,ImageBlock::IMG_INTERACTIVE));
     if(!curBlock)
     {
-        curBlock = new PropInt8Block(ImageBlock::IMG_INTERACTIVE);
+        curBlock = new EjPropInt8Block(ImageBlock::IMG_INTERACTIVE);
         addProp(lBlocks,curBlock);
     }
     m_isInteractive = curBlock->value = isInteractive;
@@ -192,10 +192,10 @@ void ImageBlock::setIsInteractive(bool isInteractive, QList<Block *> *lBlocks)
 
 void ImageBlock::setIsShowBorders(bool isShowBorders, QList<Block *> *lBlocks)
 {
-    PropInt8Block *curBlock = dynamic_cast<PropInt8Block*>(findProp(lBlocks,PROP_INT8,ImageBlock::IMG_SHOW_BORDER));
+    EjPropInt8Block *curBlock = dynamic_cast<EjPropInt8Block*>(findProp(lBlocks,PROP_INT8,ImageBlock::IMG_SHOW_BORDER));
     if(!curBlock)
     {
-        curBlock = new PropInt8Block(ImageBlock::IMG_SHOW_BORDER);
+        curBlock = new EjPropInt8Block(ImageBlock::IMG_SHOW_BORDER);
         addProp(lBlocks,curBlock);
     }
     m_showBorders = curBlock->value = isShowBorders;

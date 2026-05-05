@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef STYLES_H
 #define STYLES_H
 #include <QDataStream>
@@ -5,7 +12,60 @@
 #include <QFont>
 #include <QColor>
 #include <QFontMetrics>
+// #include <QtQuick>
+//#include "common_global.h"
 #include "docprops.h"
+
+//enum NumProp {
+//};
+
+
+
+
+//class COMMONSHARED_EXPORT EjBaseStyle : public EjPropDoc
+//{
+//public:
+////    quint8 type;
+//    quint16 num;
+//    EjBaseStyle *m_parentStyle;
+////    EjBaseStyle():EjBlock() { type = STYLE; vid = BASE_STYLE; num = 0; }
+//    EjBaseStyle(QObject *parent = 0) : PropBlock() { m_vid = PROP_DOC; num = 0; m_parentStyle = NULL; }
+//    virtual ~EjBaseStyle() {}
+//    virtual EjBaseStyle* makeCopy() {
+//            EjBaseStyle *res = new EjBaseStyle();
+//            res->num = num;
+//            res->type = type;
+//            return res;
+//    }
+//    virtual bool compare(const EjBaseStyle &other) const {
+//        bool res = (this->type == other.type && this->num == other.num) ? true : false;
+//        return res;
+//    }
+//    virtual QDataStream& write(QDataStream &os) const;
+
+//    virtual QDataStream& read(QDataStream &is,QList<EjBaseStyle *> *lStyles = NULL);
+
+//    bool operator ==(const EjBaseStyle &other) const
+//    {
+//        return compare(other);
+//    }
+
+//    friend QDataStream& operator <<(QDataStream &os, const EjBaseStyle &value)
+//    {
+//        return value.write(os);
+//    }
+
+//    friend QDataStream& operator >>(QDataStream &is, EjBaseStyle &value)
+//    {
+//        return value.read(is);
+//    }
+
+//    EjBaseStyle *getStyleByNum(int num, QList<EjBaseStyle *> *lStyles);
+//    bool writeParentNum(QDataStream &ds) const;
+
+//};
+
+//struct TextStyleParams;
 
 
 
@@ -13,15 +73,15 @@ class COMMONSHARED_EXPORT EjBaseStyle : public QObject, public EjPropDoc
 {
 public:
 	EjBaseStyle(QObject *parent = 0) : QObject(parent), EjPropDoc() { m_vid = BASE_STYLE; num = 0; m_parentStyle = NULL; }
-	EjBaseStyle(int num_) : EjBaseStyle(nullptr) { num = num_; }
-	EjBaseStyle *getStyleByNum(int num, QList<EjBaseStyle *> *lStyles);
+    EjBaseStyle(int num_) : EjBaseStyle(nullptr) { num = num_; }
+    EjBaseStyle *getStyleByNum(int num, QList<EjBaseStyle *> *lStyles);
 	virtual void createDefault(QList<EjBlock*> *lBlocks, int index) override;
 
     enum NumProp {
         STYLE_NUM = 0,
         STYLE_PARENT_NUM
     };
-	EjBaseStyle *m_parentStyle;
+    EjBaseStyle *m_parentStyle;
 
 };
 
@@ -47,6 +107,11 @@ class COMMONSHARED_EXPORT EjTextStyle : public EjBaseStyle
     Q_PROPERTY(bool familyChange READ familyChange WRITE setFamilyChange NOTIFY familyChangeChanged)
     Q_PROPERTY(bool colorChange READ colorChange WRITE setColorChange NOTIFY colorChangeChanged)
     Q_PROPERTY(bool brushChange READ brushChange WRITE setBrushChange NOTIFY brushChangeChanged)
+ //    Q_PROPERTY(e_fontStyle fontStyle MEMBER m_fontStyle NOTIFY fontStyleChanged)
+//    Q_PROPERTY(e_fontFamily fontFamily MEMBER m_fontFamily NOTIFY fontFamilyChanged)
+//    Q_PROPERTY(QFont font MEMBER m_font NOTIFY fontChanged)
+//    Q_PROPERTY(QColor fontColor MEMBER m_fontColor NOTIFY fontColorChanged)
+    //    Q_PROPERTY(QColor brushColor MEMBER m_brushColor NOTIFY brushColorChanged)
     bool m_underlineChange;
     bool m_sizeChange;
     bool m_boldChange;
@@ -58,11 +123,19 @@ class COMMONSHARED_EXPORT EjTextStyle : public EjBaseStyle
     bool m_brushChange;
 
 public:
-	EjTextStyle(QObject *parent=0);
+//    EjTextStyle():EjBaseStyle() { type = STYLE; vid = TEXT_STYLE; m_style = NORMAL; }
+    EjTextStyle(QObject *parent=0);
+//    void setFontParams(QFont &font);
+//    bool isBold();
+//    bool isUnderline();
+//    bool isItalic();
+//    int fontSize();
+//    int style() { return m_style; }
     QFont m_font;
     QColor m_fontColor;
     QColor m_brushColor;
     QFontMetrics m_fontMetrics;
+//    QString m_fontFamily;
 
     enum NumProp {
         FONT_STYLE = 2,
@@ -93,14 +166,24 @@ public:
     } m_fontStyle;
     Q_ENUM(e_fontStyle)
 
+//    enum e_fontFamily {
+//        HELVETICA
+//    } m_fontFamily;
+//    Q_ENUM(e_fontFamily)
+
+//    EjTextStyle *m_parentStyle;
     void setDefault();
 
 	EjBlock* makeCopy() override;
-	Q_INVOKABLE EjTextStyle* makeTextStyle();
-	Q_INVOKABLE void copy(EjTextStyle *style);
-	Q_INVOKABLE void copyChanges(EjTextStyle *style);
+    Q_INVOKABLE EjTextStyle* makeTextStyle();
+    Q_INVOKABLE void copy(EjTextStyle *style);
+    Q_INVOKABLE void copyChanges(EjTextStyle *style);
 	bool fullCompare(const EjBlock *other) const;
+//    void childCalc(EjBlock *child) override;
 
+//    void setParams(TextStyleParams *params);
+//    QDataStream& write(QDataStream &os) const override;
+    //    QDataStream& read(QDataStream &is, QList<EjBaseStyle *> *lStyles) override;
     e_fontStyle fontStyle() const;
 
     QString fontFamily() const;
@@ -113,7 +196,8 @@ public:
     int fontSize() const;
     bool fontUnderline() const;
 
-    void beforeCalc(EjCalcParams *calcParams) override;
+//    virtual void beforeCalc() override;
+	void beforeCalc(EjCalcParams *calcParams) override;
 	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
 
     bool underlineChange() const;
@@ -127,8 +211,8 @@ public:
     bool brushChange() const;
 
 public slots:
-	void setParentStyle(EjTextStyle *parentStyle);
-	void normalizeStyle(EjTextStyle *referenceStyle, bool force);
+    void setParentStyle(EjTextStyle *parentStyle);
+    void normalizeStyle(EjTextStyle *referenceStyle, bool force);
     void setFontStyle(e_fontStyle fontStyle);
     void setFontFamily(QString fontFamily);
     void setFontBold(bool fontBold);
@@ -150,6 +234,12 @@ public slots:
     void setBrushChange(bool brushChange);
 
 signals:
+//    void fontStyleChanged();
+//    void fontFamilyChanged();
+//    void fontChanged();
+//    void fontColorChanged();
+//    void brushColorChanged();
+
     void fontStyleChanged(e_fontStyle fontStyle);
     void fontFamilyChanged(QString fontFamily);
     void fontBoldChanged(bool fontBold);
@@ -172,13 +262,16 @@ signals:
 
 protected:
 };
-
+//Q_DECLARE_METATYPE(EjTextStyle)
 
 class COMMONSHARED_EXPORT EjBorderStyle : public EjBaseStyle
 {
     Q_OBJECT
     Q_PROPERTY(int width READ width WRITE setWidth NOTIFY widthChanged)
     Q_PROPERTY(QColor penColor READ penColor WRITE setPenColor NOTIFY penColorChanged)
+//    Q_PROPERTY(int width MEMBER m_width NOTIFY widthChanged)
+//    Q_PROPERTY(QColor penColor MEMBER m_penColor NOTIFY penColorChanged)
+//    Q_PROPERTY(e_penType penType MEMBER m_penType NOTIFY penTypeChanged)
 
 public:
     enum NumProp {
@@ -186,11 +279,22 @@ public:
         BORDER_COLOR,
     };
 
-	EjBorderStyle(QObject *parent=0);
-	EjBorderStyle(int num_) : EjBorderStyle(nullptr) { num = num_; }
+    EjBorderStyle(QObject *parent=0);
+    EjBorderStyle(int num_) : EjBorderStyle(nullptr) { num = num_; }
+//    QDataStream& write(QDataStream &ds) const override;
+//    QDataStream& read(QDataStream &ds, QList<EjBaseStyle *> *lStyles) override;
 	bool fullCompare(const EjBlock *other) const;
+//    bool compare(const EjBlock &other) const override;
 
-	void operator =(const EjBorderStyle &other);
+//    bool operator ==(const EjBorderStyle &other) const
+//    {
+//        return compare(other);
+//    }
+//    bool operator !=(const EjBorderStyle &other) const
+//    {
+//        return !(*this == other);
+//    }
+    void operator =(const EjBorderStyle &other);
 	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
 	EjBlock* makeCopy() override;
 
@@ -219,20 +323,21 @@ void penColorChanged(QColor penColor);
 class COMMONSHARED_EXPORT EjCellStyle : public EjBaseStyle
 {
     Q_OBJECT
-	Q_PROPERTY(EjBorderStyle *topBorder READ topBorder NOTIFY topBorderChanged)
-	Q_PROPERTY(EjBorderStyle *bottomBorder READ bottomBorder NOTIFY bottomBorderChanged)
-	Q_PROPERTY(EjBorderStyle *leftBorder READ leftBorder NOTIFY leftBorderChanged)
-	Q_PROPERTY(EjBorderStyle *rightBorder READ rightBorder NOTIFY rightBorderChanged)
-	Q_PROPERTY(EjBorderStyle *horisontalLine READ horisontalLine NOTIFY horisontalLineChanged)
-	Q_PROPERTY(EjBorderStyle *verticalLine READ verticalLine NOTIFY verticalLineChanged)
+    Q_PROPERTY(EjBorderStyle *topBorder READ topBorder NOTIFY topBorderChanged)
+    Q_PROPERTY(EjBorderStyle *bottomBorder READ bottomBorder NOTIFY bottomBorderChanged)
+    Q_PROPERTY(EjBorderStyle *leftBorder READ leftBorder NOTIFY leftBorderChanged)
+    Q_PROPERTY(EjBorderStyle *rightBorder READ rightBorder NOTIFY rightBorderChanged)
+    Q_PROPERTY(EjBorderStyle *horisontalLine READ horisontalLine NOTIFY horisontalLineChanged)
+    Q_PROPERTY(EjBorderStyle *verticalLine READ verticalLine NOTIFY verticalLineChanged)
     Q_PROPERTY(QColor brushColor READ brushColor WRITE setBrushColor NOTIFY brushColorChanged)
+//    Q_PROPERTY(QColor brushColor MEMBER m_brushColor NOTIFY brushColorChanged)
 
-	EjBorderStyle *m_topBorder;
-	EjBorderStyle *m_bottomBorder;
-	EjBorderStyle *m_leftBorder;
-	EjBorderStyle *m_rightBorder;
-	EjBorderStyle *m_horisontalLine;
-	EjBorderStyle *m_verticalLine;
+    EjBorderStyle *m_topBorder;
+    EjBorderStyle *m_bottomBorder;
+    EjBorderStyle *m_leftBorder;
+    EjBorderStyle *m_rightBorder;
+    EjBorderStyle *m_horisontalLine;
+    EjBorderStyle *m_verticalLine;
 
 public:
 	EjCellStyle(QObject *parent=0);
@@ -247,23 +352,27 @@ public:
         CELL_BRUSH_COLOR
     };
 
+//    QDataStream& write(QDataStream &ds) const override;
+//    QDataStream& read(QDataStream &ds, QList<EjBaseStyle *> *lStyles) override;
+//    bool compare(const EjBlock &other) const override;
 	bool fullCompare(const EjBlock *other) const;
 	void operator =(const EjCellStyle &other);
-    void beforeCalc(EjCalcParams *calcParams) override;
+	void beforeCalc(EjCalcParams *calcParams) override;
+//    virtual void createDefault(QList<EjBlock*> *lBlocks, int index) override;
 	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
 	EjBlock* makeCopy() override;
 
-	EjBorderStyle * topBorder();
-	EjBorderStyle * bottomBorder();
-	EjBorderStyle * leftBorder();
-	EjBorderStyle * rightBorder();
-	EjBorderStyle * horisontalLine();
-	EjBorderStyle * verticalLine();
+    EjBorderStyle * topBorder();
+    EjBorderStyle * bottomBorder();
+    EjBorderStyle * leftBorder();
+    EjBorderStyle * rightBorder();
+    EjBorderStyle * horisontalLine();
+    EjBorderStyle * verticalLine();
 
-	void setTopBorder(EjBorderStyle *border);
-	void setBottomBorder(EjBorderStyle *border);
-	void setLeftBorder(EjBorderStyle *border);
-	void setRightBorder(EjBorderStyle *border);
+    void setTopBorder(EjBorderStyle *border);
+    void setBottomBorder(EjBorderStyle *border);
+    void setLeftBorder(EjBorderStyle *border);
+    void setRightBorder(EjBorderStyle *border);
 
 
     QColor m_brushColor;
@@ -272,7 +381,7 @@ public:
     {
         return m_brushColor;
     }
-	void setBorderStyle(EjBorderStyle *borderStyle);
+    void setBorderStyle(EjBorderStyle *borderStyle);
 
 public slots:
     void setBrushColor(QColor brushColor);
@@ -287,12 +396,12 @@ signals:
     void horisontalLineChanged();
     void verticalLineChanged();
 protected:
-	EjBorderStyle m_topBorder_st;
-	EjBorderStyle m_bottomBorder_st;
-	EjBorderStyle m_leftBorder_st;
-	EjBorderStyle m_rightBorder_st;
-	EjBorderStyle m_horisontalLine_st;
-	EjBorderStyle m_verticalLine_st;
+    EjBorderStyle m_topBorder_st;
+    EjBorderStyle m_bottomBorder_st;
+    EjBorderStyle m_leftBorder_st;
+    EjBorderStyle m_rightBorder_st;
+    EjBorderStyle m_horisontalLine_st;
+    EjBorderStyle m_verticalLine_st;
 
 };
 
@@ -300,11 +409,14 @@ protected:
 
 class COMMONSHARED_EXPORT EjParagraphStyle : public EjBaseStyle
 {
+//    Q_GADGET
     Q_OBJECT
+//    Q_PROPERTY(Align align MEMBER m_align NOTIFY alignChanged)
+//    Q_PROPERTY(int align MEMBER m_align NOTIFY alignChanged)
     Q_PROPERTY(int align READ align WRITE setAlign NOTIFY alignChanged)
 
 public:
-	EjParagraphStyle(QObject *parent=0);
+    EjParagraphStyle(QObject *parent=0);
 
     enum NumProp {
         PRG_ALIGN = 2,
@@ -318,17 +430,22 @@ public:
         AlignTop = 0x0020,
         AlignBottom = 0x0040,
         AlignVCenter = 0x0080
+//        AlignBaseline = 0x0010
     };
     Q_ENUM(AlignFlag)
     Q_DECLARE_FLAGS(Align, AlignFlag)
 
 	EjBlock* makeCopy() override;
-	Q_INVOKABLE EjParagraphStyle* makePrgStyle();
-	Q_INVOKABLE void copy(EjParagraphStyle *style);
+    Q_INVOKABLE EjParagraphStyle* makePrgStyle();
+    Q_INVOKABLE void copy(EjParagraphStyle *style);
 	bool fullCompare(const EjBlock *other) const;
 	void childCalc(EjBlock *child, EjCalcParams *calcParams) override;
-    void beforeCalc(EjCalcParams *calcParams) override;
+	void beforeCalc(EjCalcParams *calcParams) override;
 
+//    void setParams(ParagraphStyleParams *params);
+//    QDataStream& write(QDataStream &ds) const override;
+//    QDataStream& read(QDataStream &is,QList<EjBaseStyle *> *lStyles) override;
+//    Align m_align;
     int m_align;
     int align() const;
 
@@ -336,10 +453,105 @@ public slots:
     void setAlign(int align);
 
 signals:
+//    void alignChanged();
 
     void alignChanged(int align);
 
 protected:
 };
+//Q_DECLARE_METATYPE(EjParagraphStyle)
 
+/*
+
+class COMMONSHARED_EXPORT PointStyle : public EjBaseStyle
+{
+public:
+    PointStyle():EjBaseStyle() { type = POINT_STYLE;   }
+};
+
+class COMMONSHARED_EXPORT EjLineStyle : public EjBaseStyle
+{
+  public:
+    EjLineStyle():EjBaseStyle() { type = LINE_STYLE;   }
+    QColor color();
+    int width();
+
+    EjBaseStyle* makeCopy() override;
+    bool compare(const EjBaseStyle &other) const override;
+//    QDataStream& write(QDataStream &os) const override;
+//    QDataStream& read(QDataStream &is,QList<EjBaseStyle *> *lStyles = NULL) override;
+protected:
+    quint16 m_width;
+    QRgb m_color;
+};
+
+class COMMONSHARED_EXPORT BrushStyle : public EjBaseStyle
+{
+  public:
+    BrushStyle():EjBaseStyle() { type = BRUSH_STYLE;   }
+    QColor color();
+
+    EjBaseStyle* makeCopy() override;
+    bool compare(const EjBaseStyle &other) const override;
+//    QDataStream& write(QDataStream &os) const override;
+//    QDataStream& read(QDataStream &is, QList<EjBaseStyle *> *lStyles = NULL) override;
+protected:
+    QRgb m_color;
+};
+*/
+//struct TextStyleParams
+//{
+//    TextStyleParams() {}
+//    EjTextStyle::e_fontStyle m_fontStyle;
+//    EjTextStyle::e_fontFamily  m_fontFamily;
+//    bool m_bold;
+//    bool m_underline;
+//    bool m_italic;
+//    quint16 m_pixelSize;
+//    QColor m_fontColor;
+//    QColor m_brushColor;
+//};
+
+//struct ParagraphStyleParams
+//{
+//    Q_GADGET
+//    Q_PROPERTY(Align align MEMBER m_align)
+
+//public:
+//    enum Align {
+//        AlignLeft = 0x0001,
+//        AlignRight = 0x0002,
+//        AlignHCenter = 0x0004,
+//        AlignJustify = 0x0008,
+//        AlignTop = 0x0020,
+//        AlignBottom = 0x0040,
+//        AlignVCenter = 0x0080,
+//        AlignBaseline = 0x0010
+//    };
+//    Q_ENUM(Align)
+////    ParagraphStyleParams() {}
+//    Align m_align;
+//};
+
+//struct ParagraphStyleParams {
+//    Q_GADGET
+//    Q_PROPERTY(Align align MEMBER m_align)
+//public:
+//    enum Align {
+//        AlignLeft = 0x0001,
+//        AlignRight = 0x0002,
+//        AlignHCenter = 0x0004,
+//        AlignJustify = 0x0008,
+//        AlignTop = 0x0020,
+//        AlignBottom = 0x0040,
+//        AlignVCenter = 0x0080,
+//        AlignBaseline = 0x0010
+//    };
+//    Q_ENUM(Align)
+//    Align m_align;
+////    int m_align;
+//};
+//Q_DECLARE_METATYPE(ParagraphParams)
+
+//Q_DECLARE_METATYPE(ParagraphStyleParams)
 #endif // STYLES_H

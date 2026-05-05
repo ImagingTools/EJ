@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef EJDOCXTOUJFCONVERTOR_H
 #define EJDOCXTOUJFCONVERTOR_H
 #include <QString>

@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "exportdoc.h"
 
 #include <QDebug>
@@ -21,7 +28,7 @@ bool ExportDoc::openFile(QString fName)
     return QDesktopServices::openUrl(QUrl("file:///" + fName));
 }
 
-bool ExportDoc::exportDocument(Document *doc, QString fileName, QString ext)
+bool ExportDoc::exportDocument(EjDocument *doc, QString fileName, QString ext)
 {
 //    qDebug() << "Export document" << fileName << ext;
 //    qDebug() << "Count Styles" << doc->lStyles->count();
@@ -60,7 +67,7 @@ bool ExportDoc::exportDocument(Document *doc, QString fileName, QString ext)
     return result;
 }
 
-bool ExportDoc::importToDocument(Document *doc, QString fileName, QString ext)
+bool ExportDoc::importToDocument(EjDocument *doc, QString fileName, QString ext)
 {
     qDebug() << "Import to document" << fileName << ext;
     qDebug() << "Real Import";
@@ -82,7 +89,7 @@ bool ExportDoc::importToDocument(Document *doc, QString fileName, QString ext)
     return result;
 }
 
-bool ExportDoc::printDocument(Document *doc, QPrinter *printer)
+bool ExportDoc::printDocument(EjDocument *doc, QPrinter *printer)
 {
     bool result = true;
     result &= ConvertorPdf().print(doc, printer);

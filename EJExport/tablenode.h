@@ -1,8 +1,15 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef TABLENODE_H
 #define TABLENODE_H
 
 #include "QDomDocument"
-#include "common.h"
+#include "ejcommon.h"
 #include "tableignorcellstruct.h"
 
 class TableNode{

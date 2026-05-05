@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef EJXLSXTOUJFCONVERTOR_H
 #define EJXLSXTOUJFCONVERTOR_H
 #include <QString>

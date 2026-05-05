@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "ejdocument.h"
 #include "ejtableblocks.h"
 #include "labelblock.h"
@@ -8,8 +15,8 @@ EjDocument::EjDocument(QUuid key, QObject *parent) :
 {
 	lPropBlocks = new QList<EjBlock*>;
 	lBlocks = new QList<EjBlock*>;
-    lStrings = new QList<JString*>;
-    lPages = new QList<Page*>;
+    lStrings = new QList<EjString*>;
+    lPages = new QList<EjPage*>;
 	lTables = new QList<EjTableBlock*>;
     lLabels = new QList<LabelBlock*>;
     lLabels_bak = new QList<LargeTextBlock*>;

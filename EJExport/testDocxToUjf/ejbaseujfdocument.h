@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef EJBASEUJFDOCUMENT_H
 #define EJBASEUJFDOCUMENT_H
 #include "ejtextcontrol.h"

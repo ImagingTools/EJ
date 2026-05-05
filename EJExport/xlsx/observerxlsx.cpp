@@ -32,17 +32,17 @@ QXlsx::Format chgFormat(QXlsx::Format format, QMap<QString, int> styles){
     return format;
 }
 
-QMap<QString, int> ObserverXlsx::changeStyle(QMap<QString, int>style_tumbler, NumStyleBlock *nsb){
+QMap<QString, int> ObserverXlsx::changeStyle(QMap<QString, int>style_tumbler, EjNumStyleBlock *nsb){
     style_tumbler.remove("StyleMode");
     style_tumbler.insert("StyleMode", 1);
     if( nsb->style->m_vid == e_PropDoc::PARAGRAPH_STYLE ){
-        ParagraphStyle *stl = (ParagraphStyle*)nsb->style;
-        if( stl->m_align == ParagraphStyle::AlignLeft){ style_tumbler.insert("Align",0);}
-        if( stl->m_align == ParagraphStyle::AlignRight){ style_tumbler.insert("Align",1);}
-        if( stl->m_align == ParagraphStyle::AlignHCenter){ style_tumbler.insert("Align",2);}
+        EjParagraphStyle *stl = (EjParagraphStyle*)nsb->style;
+        if( stl->m_align == EjParagraphStyle::AlignLeft){ style_tumbler.insert("Align",0);}
+        if( stl->m_align == EjParagraphStyle::AlignRight){ style_tumbler.insert("Align",1);}
+        if( stl->m_align == EjParagraphStyle::AlignHCenter){ style_tumbler.insert("Align",2);}
 
     }else if( nsb->style->m_vid == e_PropDoc::TEXT_STYLE){
-        TextStyle *stl = (TextStyle*)nsb->style;
+        EjTextStyle *stl = (EjTextStyle*)nsb->style;
         style_tumbler.insert("SizeFont", stl->m_font.pixelSize()); //or pixel?
         qDebug() << "<><><>brushColor: " << stl->m_brushColor;
         style_tumbler.insert("RedBrush",stl->m_brushColor.red() );
@@ -59,50 +59,50 @@ QMap<QString, int> ObserverXlsx::changeStyle(QMap<QString, int>style_tumbler, Nu
         if (stl->m_font.strikeOut() )   { style_tumbler.insert("StrikeOut", 1);}else{style_tumbler.insert("StrikeOut",0);}
 
         //STYLE
-        if( stl->m_fontStyle == TextStyle::NORMAL){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL){
             style_tumbler.insert("SizeFont", 24);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_BIG1){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_BIG1){
             style_tumbler.insert("SizeFont", 30);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_BIG2){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_BIG2){
             style_tumbler.insert("SizeFont", 32);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_SMALL1){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_SMALL1){
             style_tumbler.insert("SizeFont", 21);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_SMALL2){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_SMALL2){
             style_tumbler.insert("SizeFont", 16);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING1){
+        if( stl->m_fontStyle == EjTextStyle::HEADING1){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",0);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 38);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING2){
+        if( stl->m_fontStyle == EjTextStyle::HEADING2){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",0);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 36);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING3){
+        if( stl->m_fontStyle == EjTextStyle::HEADING3){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",0);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 28);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING4){
+        if( stl->m_fontStyle == EjTextStyle::HEADING4){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",1);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 26);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING5){
+        if( stl->m_fontStyle == EjTextStyle::HEADING5){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",1);
             style_tumbler.insert("UnderLine",1);
@@ -115,9 +115,9 @@ QMap<QString, int> ObserverXlsx::changeStyle(QMap<QString, int>style_tumbler, Nu
     return style_tumbler;
 }
 
-void ObserverXlsx::observe(Document *doc, const QString fileName){
+void ObserverXlsx::observe(EjDocument *doc, const QString fileName){
 
-    QXlsx::Document xlsx;
+    QXlsx::EjDocument xlsx;
     QXlsx::Format format;
     int index = 0;
     QList<Block*> *lBlocks = doc->lBlocks;
@@ -136,7 +136,7 @@ void ObserverXlsx::observe(Document *doc, const QString fileName){
         qDebug() << " ---";
 
         if( curBlock->type == e_typeBlocks::TEXT){
-            TextBlock *blocText = (TextBlock*)curBlock;
+            EjTextBlock *blocText = (EjTextBlock*)curBlock;
             lText.append(blocText->text);
 
 
@@ -165,7 +165,7 @@ void ObserverXlsx::observe(Document *doc, const QString fileName){
         // <--- STYLES
         if(curBlock->type == e_typeBlocks::NUM_STYLE){
             //format = chgFormat(format, styles);
-            NumStyleBlock *nsb = (NumStyleBlock*)curBlock;
+            EjNumStyleBlock *nsb = (EjNumStyleBlock*)curBlock;
             styles = changeStyle(styles, nsb);
             if(styles.value("Bold") == 1 ){
              format.setFontBold(true);

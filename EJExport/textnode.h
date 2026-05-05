@@ -1,8 +1,15 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef TEXTNODE_H
 #define TEXTNODE_H
 
 #include "QDomDocument"
-#include "common.h"
+#include "ejcommon.h"
 
 class TextNode{
 public:

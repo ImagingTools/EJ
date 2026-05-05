@@ -2,7 +2,7 @@
 #define OBSERVERXSLX_H
 
 
-#include "common.h"
+#include "ejcommon.h"
 #include "QDomDocument"
 #include "QtXlsxWriter-master/src/xlsx/xlsxdocument.h"
 
@@ -10,7 +10,7 @@
 //{
 //public:
 //    ObserverXslx();
-//    QList<QDomElement> observe(Document *doc);
+//    QList<QDomElement> observe(EjDocument *doc);
 //    QDomDocument glue(QList<QDomElement> nodesList);
 //    void write(QDomDocument doc);
 //    void addImageRelationship(QString path,int id);
@@ -22,8 +22,8 @@ class ObserverXlsx
 {
   public:
     ObserverXlsx();
-    void observe (Document *doc, const QString fileName);
-    QMap<QString, int> changeStyle(QMap<QString, int> styles, NumStyleBlock *nsb);
+    void observe (EjDocument *doc, const QString fileName);
+    QMap<QString, int> changeStyle(QMap<QString, int> styles, EjNumStyleBlock *nsb);
     void writeXlsx(QDomDocument doc, const QString fileName);
     QXlsx::Format chgFormat(QXlsx::Format format, QMap<QString, int> styles);
 

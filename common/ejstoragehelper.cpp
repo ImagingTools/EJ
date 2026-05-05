@@ -1,7 +1,16 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "ejstoragehelper.h"
 #include "ejdocument.h"
 #include <QIODevice>
 #include <ejtableblocks.h>
+#include <IntVarLen2.h>
+#include <difft.h>
 
 
 EjBlock* newBlock(int tid)
@@ -62,7 +71,7 @@ struct COMMONSHARED_EXPORT StreamReader<EjBlock>
 				obj->read(is);
 				return obj; }
 		case PROP_DOC: {
-				//            PropDoc *obj = new PropDoc();
+				//            EjPropDoc *obj = new EjPropDoc();
 				EjBlock *obj = nullptr;
 				quint8 vid;
 				is >> vid;
@@ -269,7 +278,7 @@ QByteArray EjStorageHelper::getPatch(EjDocument* oldDoc, EjDocument* newDoc, qui
 	}
 	//    Patch patch;
 	EjAttrProp *oldAttr = oldDoc->attributes();
-	//    AttrProp *newAttr = newDoc->getAttributes();
+	//    EjAttrProp *newAttr = newDoc->getAttributes();
 	QUuid uuid = QUuid::createUuid();
 	qint16 key = uuid.data2;
 	quint32 time = QDateTime::currentDateTime().toSecsSinceEpoch();

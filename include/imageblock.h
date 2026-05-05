@@ -43,7 +43,7 @@ public:
     void setIsShowBorders(bool isShowBorders, QList<EjBlock *> *lBlocks);
     virtual EjBlock* makeCopy() override;
 
-//    QList<MapLabelBlock*> *getLabels() { return &lLabels; }
+//    QList<EjMapLabelBlock*> *getLabels() { return &lLabels; }
 
 //protected:
     int key;

@@ -2,7 +2,7 @@
 #define CELLNODEXSLX_H
 
 #include "cellnode.h"
-#include "common.h"
+#include "ejcommon.h"
 
 class CellNodeXlsx: public CellNode
 {

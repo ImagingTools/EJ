@@ -1,4 +1,9 @@
-# EJ
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
 
 This repository contains the **EJ** library used by ImtCore.
 

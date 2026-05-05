@@ -9,7 +9,7 @@
 #include "zipper.h"
 #include <zlib.h>
 #include <tableignorcellstruct.h>
-#include "storagehelper.h"
+#include "ejstoragehelper.h"
 
 //QString ObserverDocx::pathToResources;
 
@@ -60,19 +60,19 @@ QMap<QString, int> ObserverDocx::border(QMap<QString, int> styles, CellStyle *ce
     return styles;
 }
 
-QMap<QString, int> ObserverDocx::changeStyle(QMap<QString, int>style_tumbler, NumStyleBlock *nsb){
+QMap<QString, int> ObserverDocx::changeStyle(QMap<QString, int>style_tumbler, EjNumStyleBlock *nsb){
     //style_tumbler.remove("StyleMode");
     style_tumbler.insert("StyleMode", 1);
     TextNodeDocx texter;
 
     if( nsb->style->m_vid == e_PropDoc::PARAGRAPH_STYLE ){
-        ParagraphStyle *stl = (ParagraphStyle*)nsb->style;
-        if( stl->m_align == ParagraphStyle::AlignLeft){ style_tumbler.insert("Align",0);}
-        if( stl->m_align == ParagraphStyle::AlignRight){ style_tumbler.insert("Align",1);}
-        if( stl->m_align == ParagraphStyle::AlignHCenter){ style_tumbler.insert("Align",2);}
+        EjParagraphStyle *stl = (EjParagraphStyle*)nsb->style;
+        if( stl->m_align == EjParagraphStyle::AlignLeft){ style_tumbler.insert("Align",0);}
+        if( stl->m_align == EjParagraphStyle::AlignRight){ style_tumbler.insert("Align",1);}
+        if( stl->m_align == EjParagraphStyle::AlignHCenter){ style_tumbler.insert("Align",2);}
 
     }else if( nsb->style->m_vid == e_PropDoc::TEXT_STYLE){ //m_vid
-        TextStyle *stl = (TextStyle*)nsb->style;
+        EjTextStyle *stl = (EjTextStyle*)nsb->style;
         style_tumbler.insert("SizeFont", stl->m_font.pixelSize()); //or pixel?
         qDebug() << "<><><>brushColor: " << stl->m_brushColor;
         style_tumbler.insert("AlphaBrush",stl->m_brushColor.alpha());
@@ -91,50 +91,50 @@ QMap<QString, int> ObserverDocx::changeStyle(QMap<QString, int>style_tumbler, Nu
         if (stl->m_font.strikeOut() )   { style_tumbler.insert("StrikeOut", 1);}else{style_tumbler.insert("StrikeOut",0);}
 
         //STYLE
-        if( stl->m_fontStyle == TextStyle::NORMAL){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL){
             style_tumbler.insert("SizeFont", 24);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_BIG1){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_BIG1){
             style_tumbler.insert("SizeFont", 30);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_BIG2){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_BIG2){
             style_tumbler.insert("SizeFont", 32);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_SMALL1){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_SMALL1){
             style_tumbler.insert("SizeFont", 21);
         }
-        if( stl->m_fontStyle == TextStyle::NORMAL_SMALL2){
+        if( stl->m_fontStyle == EjTextStyle::NORMAL_SMALL2){
             style_tumbler.insert("SizeFont", 16);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING1){
+        if( stl->m_fontStyle == EjTextStyle::HEADING1){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",0);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 38);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING2){
+        if( stl->m_fontStyle == EjTextStyle::HEADING2){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",0);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 36);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING3){
+        if( stl->m_fontStyle == EjTextStyle::HEADING3){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",0);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 28);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING4){
+        if( stl->m_fontStyle == EjTextStyle::HEADING4){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",1);
             style_tumbler.insert("UnderLine",0);
             style_tumbler.insert("StrikeOut",0);
             style_tumbler.insert("SizeFont", 26);
         }
-        if( stl->m_fontStyle == TextStyle::HEADING5){
+        if( stl->m_fontStyle == EjTextStyle::HEADING5){
             style_tumbler.insert("Bold",1);
             style_tumbler.insert("Italic",1);
             style_tumbler.insert("UnderLine",1);
@@ -228,7 +228,7 @@ QDomElement ObserverDocx::createSectPr(QString width, QString height, QString le
 
 }
 
-QList<QDomElement> ObserverDocx::observe(Document *doc){
+QList<QDomElement> ObserverDocx::observe(EjDocument *doc){
     QTextCodec::setCodecForLocale(QTextCodec::codecForName("UTF-8"));
 
     QList<QDomElement> paragraphsList;
@@ -263,7 +263,7 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
 
         //      <--------------TEXT
         if( curBlock->type == e_typeBlocks::TEXT){
-            TextBlock *blocText = (TextBlock*)curBlock;
+            EjTextBlock *blocText = (EjTextBlock*)curBlock;
             TextNodeDocx texter;
             QDomElement textNode;
             if (style_tumbler.value("StyleMode") == 0){
@@ -303,7 +303,7 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
             curBlock = lBlocks->at(index);
             while( !(curBlock->type == e_typeBlocks::END_GROUP) ){
                 if(curBlock->type == 22){
-                    PropByteArrayBlock *pbab = (PropByteArrayBlock*)curBlock;
+                    EjPropByteArrayBlock *pbab = (EjPropByteArrayBlock*)curBlock;
                     QByteArray ba = pbab->data;
                     //name = QTextCodec::codecForMib(1015)->toUnicode(ba);
                     ba = ba.toHex();
@@ -321,10 +321,10 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
             }
             //a->b
             QString idImageStr = QString::number(id_count);
-            QString filePath = StorageHelper::pathPic() + name;
+            QString filePath = EjStorageHelper::pathPic() + name;
 
             qDebug() << "Name;" << name;
-            qDebug()<< "StorageHelper"<<StorageHelper::pathPic();
+            qDebug()<< "EjStorageHelper"<<EjStorageHelper::pathPic();
             qDebug() << "filePath" << filePath;
             //MediaFolder       QFile(".../docx/word/media").exists();
 //            if ( ! QFile(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)+ "/storage/data/files/"+name).exists()){
@@ -354,7 +354,7 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
         //      <--------------STYLE
         if( curBlock->type == e_typeBlocks::NUM_STYLE ){
             qDebug() << "Стилистический блок! ";
-            NumStyleBlock *nsb = (NumStyleBlock*)curBlock;
+            EjNumStyleBlock *nsb = (EjNumStyleBlock*)curBlock;
             style_tumbler = changeStyle(style_tumbler,nsb);
         }
 
@@ -389,7 +389,7 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
                 qDebug() << "ORA ORA: " << curBlock->type;
                 index++;
                 curBlock = lBlocks->at(index);
-                if( curBlock->type == e_typeBlocks::NUM_STYLE){NumStyleBlock *nsb = (NumStyleBlock*)curBlock;style_tumbler = changeStyle(style_tumbler, nsb);}
+                if( curBlock->type == e_typeBlocks::NUM_STYLE){EjNumStyleBlock *nsb = (EjNumStyleBlock*)curBlock;style_tumbler = changeStyle(style_tumbler, nsb);}
             }
 
 
@@ -424,7 +424,7 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
                 qDebug() << " Сейчас блок типа: " << curBlock->type;
                 if( curBlock->type == e_typeBlocks::TEXT){
 
-                    TextBlock *textBlock = (TextBlock*)curBlock;
+                    EjTextBlock *textBlock = (EjTextBlock*)curBlock;
                     listTempR.append(texter.addTextWithStyle(textBlock->text, style_tumbler));
                 }
                 if( curBlock->type == e_typeBlocks::SPACE){
@@ -432,7 +432,7 @@ QList<QDomElement> ObserverDocx::observe(Document *doc){
                 }
                 if( curBlock->type == e_typeBlocks::NUM_STYLE ){
                     qDebug() << "Стилистический блок! ";
-                    NumStyleBlock *nsb = (NumStyleBlock*)curBlock;
+                    EjNumStyleBlock *nsb = (EjNumStyleBlock*)curBlock;
                     style_tumbler = changeStyle(style_tumbler,nsb);
                 }
                 if( curBlock->type == e_typeBlocks::BASECELL ){

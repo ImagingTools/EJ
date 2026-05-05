@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "ejpdfdocumenteditor.h"
 #include "ejtableblocks.h"
 #include "export_global.h"

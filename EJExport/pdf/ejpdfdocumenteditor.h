@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef PDFDOCUMENTEDITOR_H
 #define PDFDOCUMENTEDITOR_H
 #include "ejpdfdocument.h"

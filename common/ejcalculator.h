@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef EJCALCULATOR_H
 #define EJCALCULATOR_H
 #include "calculatorhelper.h"

@@ -1,10 +1,21 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "ejtextcontrol.h"
-#include "ejcalculator.h"
-#include "ejcommon.h"
+#include "calculatorhelper.h"
 #include "ejtableblocks.h"
+// #include "labelplug.h"
+#include "difft.h"
+#include <ejcalculator.h>
+#include "docprops.h"
 #include "labelblock.h"
 
 #include <QDebug>
+// #include <QQmlFile>
 #include <QMimeData>
 #include <QClipboard>
 #include <QGuiApplication>
@@ -13,6 +24,11 @@
 #include <QTextLayout>
 #include <QTextLine>
 
+template<>
+struct StreamReader<EjBlock>
+{
+    static EjBlock* read(QDataStream &is);
+};
 
 EjTextControl::EjTextControl(QObject *parent) :
     QObject(parent),
@@ -24,9 +40,8 @@ EjTextControl::EjTextControl(QObject *parent) :
     bottomColontitul(0),
     m_statusMode(READ_ONLY),
     m_selectMode(NO_SELECTED),
-    doc(&m_doc),
+    doc(nullptr),
     docPrev(nullptr),
-    metric(QFontMetrics(getTextStyle(0)->m_font)),
     m_viewMode(RICH_TEXT)
 {
     SurroundingText = "";
@@ -41,18 +56,16 @@ EjTextControl::EjTextControl(QObject *parent) :
     m_heightCursor = 0;
     m_contentX = m_contentY = 0;
     m_posCursorX = leftColontitul;
-    m_posCursorY = metric.height() * 100;// + m_interval;
+    m_posCursorY = topColontitul;
     m_height = 0;//metric.height() * 110;
-    m_isViewDoc = true;
+    m_isViewDoc = false;
     m_startCursor = true;
     m_showCell = false;
     m_inputSelBlock = NULL;
     is_startInputMode = false;
     m_defaultPageWidth = 21000;
     m_defaultPageHeight = 29700;
-
-    setDocument(doc);
-    calcCursor();
+    m_defaultOrientation = EjDocLayout::ORN_PORTRAIT;
     docPrev = nullptr;
     m_currentPatch = -1;
     m_createPatchEnabled = false;
@@ -106,7 +119,7 @@ void EjTextControl::calcInputMethodParams()
     {
         switch (doc->lBlocks->at(start)->type) {
         case TEXT: case BASECELL:
-			str = static_cast<EjTextBlock*>(doc->lBlocks->at(start))->text;
+            str = static_cast<EjTextBlock*>(doc->lBlocks->at(start))->text;
             if(start < activeIndex)
                 TextBeforeCursor += str;
             if(start > activeIndex)
@@ -127,13 +140,14 @@ void EjTextControl::calcInputMethodParams()
     {
         if(activeIndex >= 0 && (doc->lBlocks->at(activeIndex)->type == TEXT || doc->lBlocks->at(activeIndex)->type == BASECELL))
         {
-			str = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
+            str = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
 
             TextBeforeCursor += str.left(position);
-			TextAfterCursor = str.right(str.length() - position) + TextAfterCursor;
+            TextAfterCursor = str.right(str.count() - position) + TextAfterCursor;
         }
     }
     SurroundingText = TextBeforeCursor + TextAfterCursor;
+
 }
 
 int EjTextControl::delText(int delta, int count)
@@ -141,6 +155,7 @@ int EjTextControl::delText(int delta, int count)
     if(activeIndex < 0)
         return 0;
     int start = count + delta;
+    int row = -1, colum = -1, row_new = -1, colum_new = -1;
     int activeBlock_back = activeIndex;
     int position_back;
     bool is_rem = false;
@@ -178,7 +193,9 @@ int EjTextControl::delText(int delta, int count)
 QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant argument) const
 {
     Q_UNUSED(argument)
+    int n;
     QString str;
+    QRect rect(0,0,m_width,m_height);
     QString blockTextAfterCursor, blockTextBeforeCursor;
     int maxLength = 1024;
 
@@ -186,7 +203,7 @@ QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant
     int length;
     EjBlock *block;
 
-	QString TextAfterCursor, TextBeforeCursor;
+    QString SurroundingText, TextAfterCursor, TextBeforeCursor;
     if(property == Qt::ImTextBeforeCursor || property == Qt::ImTextAfterCursor)
     {
         maxLength = argument.isValid() ? argument.toInt() : 1024;
@@ -204,7 +221,7 @@ QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant
             str = "";
             if(block->type == TEXT)
             {
-				str = (dynamic_cast<EjTextBlock*>(block))->text;
+                str = (dynamic_cast<EjTextBlock*>(block))->text;
             }
             else if(block->type == SPACE)
             {
@@ -229,7 +246,7 @@ QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant
             str = "";
             if(block->type == TEXT)
             {
-				str = (dynamic_cast<EjTextBlock*>(block))->text;
+                str = (dynamic_cast<EjTextBlock*>(block))->text;
             }
             else if(block->type == SPACE)
             {
@@ -252,12 +269,12 @@ QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant
             blockTextAfterCursor = TextAfterCursor;
         if(doc->lBlocks->at(activeIndex)->type == TEXT)
         {
-			str = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
+            str = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
 
             TextBeforeCursor += str.left(position);
-			TextAfterCursor = str.right(str.length() - position) + TextAfterCursor;
+            TextAfterCursor = str.right(str.count() - position) + TextAfterCursor;
             blockTextBeforeCursor += str.left(position);
-			blockTextAfterCursor = str.right(str.length() - position) + blockTextAfterCursor;
+            blockTextAfterCursor = str.right(str.count() - position) + blockTextAfterCursor;
         }
         else if(doc->lBlocks->at(activeIndex)->type == SPACE)
         {
@@ -269,26 +286,22 @@ QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant
            TextBeforeCursor += "\n";
            blockTextBeforeCursor = "";
         }
+        //        SurroundingText = TextBeforeCursor + TextAfterCursor;
 
     }
     switch (property) {
     case Qt::ImCursorRectangle:
         return QRectF(0,0,0,0);
     case Qt::ImFont:
-        // QFont;
         return getTextStyle(0)->m_font;
     case Qt::ImCursorPosition:
-        // int
-		qWarning() << "ImCursorPosition: " << TextBeforeCursor.length();
-		return blockTextBeforeCursor.length();
-//        return 0;
+        qWarning() << "ImCursorPosition: " << TextBeforeCursor.count();
+        return blockTextBeforeCursor.count();
     case Qt::ImAnchorPosition:
-        // int
-		qWarning() << "ImCursorPosition: " << TextBeforeCursor.length();
-		return blockTextBeforeCursor.length();
+        qWarning() << "ImCursorPosition: " << TextBeforeCursor.count();
+        return blockTextBeforeCursor.count();
     case Qt::ImSurroundingText:
         return QVariant(blockTextBeforeCursor + blockTextAfterCursor);
-
     case Qt::ImTextBeforeCursor:
         return QVariant(TextBeforeCursor);
 
@@ -296,14 +309,14 @@ QVariant EjTextControl::inputMethodQuery(Qt::InputMethodQuery property, QVariant
         return QVariant(TextAfterCursor);
 
     case Qt::ImCurrentSelection:
+
         return QVariant();
 
     case Qt::ImMaximumTextLength:
         return QVariant(); // No limit.
 
     case Qt::ImAbsolutePosition:
-		return TextBeforeCursor.length();
-
+        return TextBeforeCursor.count();
     default:
         return QVariant();
     }
@@ -313,11 +326,11 @@ void EjTextControl::inputText(QString text)
 {
     if(text.isEmpty())
         return;
-	EjTextBlock *cur_txtBlock;
+    EjTextBlock *cur_txtBlock;
 
     if(activeIndex > doc->lBlocks->count() -1)
     {
-		doc->lBlocks->insert(doc->lBlocks->count(), new EjTextBlock());
+        doc->lBlocks->insert(doc->lBlocks->count(), new EjTextBlock());
         activeIndex = doc->lBlocks->count() -1;
         position = 0;
     }
@@ -334,30 +347,41 @@ void EjTextControl::inputText(QString text)
         killTimer(m_timerId);
         m_timerId = startTimer(1000);
     }
-	EjTableBlock *table = isTable(activeIndex);
+    EjTableBlock *table = isTable(activeIndex);
 
 	if(!m_startCursor && activeIndex > -1 && doc->lBlocks->at(activeIndex)->type == ENTER)
     {
         {
             activeIndex++;
-			doc->lBlocks->insert(activeIndex, new EjTextBlock());
+            doc->lBlocks->insert(activeIndex, new EjTextBlock());
             if(table)
                 table->m_counts++;
             position = 0;
         }
     }
+
     else if(activeIndex == -1 || (doc->lBlocks->at(activeIndex)->type != TEXT))
     {
-        if(activeIndex == -1 || (!m_startCursor && doc->lBlocks->at(activeIndex)->type != ENTER
-                                 && doc->lBlocks->at(activeIndex)->type != NUM_STYLE) )
+        if(activeIndex <= 0){
+            if (activeIndex < 0) activeIndex++;;
+            while (activeIndex < doc->lBlocks->count()){
+                if (doc->lBlocks->at(activeIndex)->type != NUM_STYLE){
+                    break;
+                }
+                activeIndex++;
+            }
+        }
+        else if (!m_startCursor && doc->lBlocks->at(activeIndex)->type != ENTER
+        && doc->lBlocks->at(activeIndex)->type != NUM_STYLE) {
             activeIndex++;
-		doc->lBlocks->insert(activeIndex, new EjTextBlock());
+        }
+        doc->lBlocks->insert(activeIndex, new EjTextBlock());
         if(table)
             table->m_counts++;
         position = 0;
     }
     m_startCursor = false;
-	cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
+    cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
     if(m_statusMode == EDIT_CELL || ((m_statusMode == EDIT_TEXT) && cur_txtBlock->type == TEXT))
     {
         if(m_inputSelectMode == false)
@@ -376,7 +400,7 @@ void EjTextControl::inputText(QString text)
         QFontMetrics drawMetric = getDrawMetrics(activeIndex);
 
         int d = 0;
-		d = drawMetric.horizontalAdvance(cur_txtBlock->text) * 100 * 0.347;
+        d = drawMetric.horizontalAdvance(cur_txtBlock->text) * 100 * 0.347;
         if(doc->lBlocks->at(activeIndex)->type == BASECELL)
         {
             if(cur_txtBlock->width < d)
@@ -390,7 +414,7 @@ void EjTextControl::inputText(QString text)
     }
     else if (cur_txtBlock->type == BASECELL && m_statusMode == EDIT_TEXT)
     {
-		EjTableBlock *table = isTable(activeIndex);
+        EjTableBlock *table = isTable(activeIndex);
         if(table)
         {
             int center = (table->startCell() + table->m_index + table->m_counts) / 2;
@@ -417,6 +441,27 @@ void EjTextControl::inputText(QString text)
 
 void EjTextControl::addImage(QString path)
 {
+    QByteArray full_key;
+
+//    splitText(activeIndex,position);
+//    //    updateFragments(activeBlock,true);
+//    doc->lBlocks->insert(activeIndex,new ImageBlock_old());
+//    updateFragments(activeIndex, true);
+//    if(activeIndex == -1)
+//        activeIndex++;
+//    ImageBlock_old *curImageBlock = static_cast<ImageBlock_old*>(doc->lBlocks->at(activeIndex));
+//    //    curImageBlock->height = metric.height()*4;
+//    //    curImageBlock->width = metric.height()*6;
+//    ext_storage->addImage(path,full_key);
+//    ext_storage->loadSmallImage(&curImageBlock->small_image,full_key,0);
+//    curImageBlock->name = full_key;   //.toString().remove(QChar('-'));
+//    curImageBlock->width = curImageBlock->small_image.width()  * 100 * 0.347;
+//    curImageBlock->ascent = curImageBlock->small_image.height() * 100 * 0.347;
+//    //    curImageBlock->small_image = image.scaled(curImageBlock->width,curImageBlock->height);
+//    //    curImageBlock->lData = block.lData;
+//    m_inputSelectMode = false;
+//    calc(activeIndex);
+
 }
 
 void EjTextControl::addExtBlock(EjBlock *block)
@@ -436,12 +481,28 @@ void EjTextControl::addClearTable()
 
 }
 
+void EjTextControl::inputContacts(ContactBlock &block)
+{
+    // splitText(activeIndex,position);
+    // //    updateFragments(activeBlock,true);
+    // doc->lBlocks->insert(activeIndex,new ContactBlock());
+    // updateFragments(activeIndex, true);
+    // //    activeBlock++;
+    // ContactBlock *curContactBlock = static_cast<ContactBlock*>(doc->lBlocks->at(activeIndex));
+    // QFontMetrics drawMetric = getDrawMetrics(activeIndex);
+    // curContactBlock->ascent = drawMetric.ascent();
+    // curContactBlock->name = block.name;
+    // curContactBlock->lData = block.lData;
+    // m_inputSelectMode = false;
+    // calc(activeIndex);
+
+}
 
 bool EjTextControl::splitText(int &block,int &pos)
 {
     QString str1;
     QString str2;
-	EjTextBlock *curTextBlock;
+    EjTextBlock *curTextBlock;
     QString text;
     bool res = false;
     if(block < 0 || block > doc->lBlocks->count() - 1) return false;
@@ -455,26 +516,27 @@ bool EjTextControl::splitText(int &block,int &pos)
         if(pos > 0)
         {
             QFontMetrics drawMetric = getDrawMetrics(block);
-			curTextBlock = static_cast<EjTextBlock*>(doc->lBlocks->at(block));
+            curTextBlock = static_cast<EjTextBlock*>(doc->lBlocks->at(block));
             text = curTextBlock->text;
             if(pos < text.size())
             {
+                //                updateFragments(block,true,true);
                 str1 = text.left(pos);
                 str2 = text.right(text.size() - pos);
                 curTextBlock->text = str1;
                 curTextBlock->flag_redraw = true;
-                curTextBlock->ascent = metric.ascent();
+                curTextBlock->ascent = drawMetric.ascent();
                 curTextBlock->width = 0;
                 block++;
-				doc->lBlocks->insert(block,new EjTextBlock());
-				curTextBlock = static_cast<EjTextBlock*>(doc->lBlocks->at(block));
+                doc->lBlocks->insert(block,new EjTextBlock());
+                curTextBlock = static_cast<EjTextBlock*>(doc->lBlocks->at(block));
                 curTextBlock->text = str2;
                 curTextBlock->ascent = drawMetric.ascent();
                 curTextBlock->width = 0;
                 pos = 0;
                 res = true;
 
-				EjTableBlock *table = isTable(pos);
+                EjTableBlock *table = isTable(pos);
                 if(table)
                 {
                     table->m_counts++;
@@ -498,10 +560,11 @@ quint32 EjTextControl::inputEnter(bool force)
 {
     quint32 res = 0;
     EjBlock *curBlock;
-	EjTableBlock *table = isTable(activeIndex);
+
+    EjTableBlock *table = isTable(activeIndex);
 	if(activeIndex < 0 || m_startCursor)
 	{
-		doc->lBlocks->insert(0,new EjBlock(ENTER));
+        doc->lBlocks->insert(0,new EjBlock(ENTER));
 		activeIndex = 0;
 		m_startCursor = false;
 		position = 0;
@@ -518,9 +581,9 @@ quint32 EjTextControl::inputEnter(bool force)
         {
             int center = (table->startCell() + table->endBlock()) / 2;
             EjBlock *block = table;
-			while(block->m_parent)
+            while(block->parent)
             {
-				block = block->m_parent;
+                block = block->parent;
             }
 
             if(activeIndex < center)
@@ -542,7 +605,7 @@ quint32 EjTextControl::inputEnter(bool force)
             else activeIndex--;
         }
     }
-	else // if(m_statusMode != EDIT_CELL && activeIndex > -1)
+    else
 	{
 
         m_startCursor = false;
@@ -558,18 +621,22 @@ quint32 EjTextControl::inputEnter(bool force)
         splitText(activeIndex,position);
         doc->lBlocks->insert(activeIndex,new EjBlock(ENTER));
         curBlock = doc->lBlocks->at(activeIndex);
-
-        curBlock->ascent = metric.ascent();
+        QFontMetrics drawMetric = getDrawMetrics(activeIndex);
+        curBlock->ascent = drawMetric.ascent();
         m_inputSelectMode = false;
     }
+    createPatch();
+
     return res;
 }
 
 void EjTextControl::inputSpace()
 {
-	EjTextBlock *curTextBlock;
+    EjTextBlock *curTextBlock;
     int back_activeBlock = activeIndex;
     {
+        if(activeIndex > -1 && activeIndex < doc->lBlocks->count() && doc->lBlocks->at(activeIndex)->type != SPACE)
+            createPatch();
         if(m_createPatchEnabled)
         {
             killTimer(m_timerId);
@@ -577,25 +644,26 @@ void EjTextControl::inputSpace()
         }
 
         m_startCursor = false;
-		EjTableBlock *table = isTable(activeIndex);
+        EjTableBlock *table = isTable(activeIndex);
         if(splitText(activeIndex,position))
         {
         }
         if(back_activeBlock == activeIndex && activeIndex > -1 && activeIndex < doc->lBlocks->count()
                 && doc->lBlocks->at(activeIndex)->type == BASECELL)
         {
-			curTextBlock = new EjTextBlock();
+            curTextBlock = new EjTextBlock();
             activeIndex++;
             doc->lBlocks->insert(activeIndex,curTextBlock);
             if(table)
                 table->m_counts++;
         }
-		doc->lBlocks->insert(activeIndex,new EjSpaceBlock());
+        doc->lBlocks->insert(activeIndex,new EjSpaceBlock());
         if(table)
             table->m_counts++;
         if(activeIndex < 0)
             activeIndex = 0;
-        doc->lBlocks->at(activeIndex)->ascent = metric.ascent();
+        QFontMetrics drawMetric = getDrawMetrics(activeIndex);
+        doc->lBlocks->at(activeIndex)->ascent = drawMetric.ascent();
     }
 }
 
@@ -645,7 +713,7 @@ void EjTextControl::inputBackSpace()
         }
         if(doc->lBlocks->at(activeIndex)->type == TEXT)
         {
-			position = (dynamic_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex)))->text.length();
+            position = (dynamic_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex)))->text.count();
         }
 
     }
@@ -673,7 +741,6 @@ void EjTextControl::inputBackSpace()
             activeIndex--;
             if(isTable)
                 updateTables(doc);
-//        }
         return;
     }
 
@@ -683,7 +750,7 @@ void EjTextControl::inputBackSpace()
     {
         if(position > 0)
         {
-			EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
+            EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
             cur_txtBlock->text = cur_txtBlock->text.remove(position-1,1);
             cur_txtBlock->flag_redraw = true;
             position--;
@@ -697,7 +764,7 @@ void EjTextControl::inputBackSpace()
     }
     else if(doc->lBlocks->at(activeIndex)->type == TEXT && position > 0)
     {
-		EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
+        EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
         cur_txtBlock->text = cur_txtBlock->text.remove(position-1,1);
         cur_txtBlock->flag_redraw = true;
         if(cur_txtBlock->text.isEmpty())
@@ -709,7 +776,7 @@ void EjTextControl::inputBackSpace()
             position = 0;
             if(activeIndex >= 0 && doc->lBlocks->at(activeIndex)->type == TEXT)
             {
-				EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
+                EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
                 position = cur_txtBlock->text.size();
             }
             if(activeIndex < 0)
@@ -732,7 +799,7 @@ void EjTextControl::inputBackSpace()
             position = 0;
             if(activeIndex >= 0 && (doc->lBlocks->at(activeIndex)->type == TEXT || doc->lBlocks->at(activeIndex)->type == BASECELL))
             {
-				position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
+                position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
             }
             inputBackSpace();
         }
@@ -765,8 +832,8 @@ void EjTextControl::inputBackSpace()
         else
         {
             curBlock = doc->lBlocks->at(activeIndex);
-			while(curBlock->m_parent)
-				curBlock = curBlock->m_parent;
+            while(curBlock->parent)
+                curBlock = curBlock->parent;
             if(curBlock->type >= GROUP_BLOCK)
             {
                 EjGroupBlock *curGroupBlock = dynamic_cast<EjGroupBlock*>(curBlock);
@@ -782,7 +849,7 @@ void EjTextControl::inputBackSpace()
         position = 0;
         if(activeIndex >= 0 && (doc->lBlocks->at(activeIndex)->type == TEXT || doc->lBlocks->at(activeIndex)->type == BASECELL))
         {
-			EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
+            EjTextBlock *cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
             position = cur_txtBlock->text.size();
         }
         if(activeIndex < 0)
@@ -804,6 +871,774 @@ void EjTextControl::inputBackSpace()
     }
 }
 
+//void EjTextControl::draw(QPainter *painter, int dx, int dy, int w, int h, bool select_area)
+//{
+//    EjBlock *cur_Block;
+//    //    EjTextBlock *cur_txtBlock;
+//    //    ContactBlock *cur_cntBlock;
+//    //    ImageBlock *cur_imageBlock;
+//    //    EjTableBlock *cur_TableBlock;
+//    //    QString txt;
+//    //    int delta_start = 0;
+//    //    int delta_end = 0;
+//    //    QImage image_check("://Style1/check.png");
+//    static QImage image("://Style1/image6418.jpg");
+//    //    QMap<quint8,Param> mActualParams;
+//    //    QList<quint8> lKeys;
+//    //    QFont drawFont = currentFont;
+//    //    int h_align = 0;
+//    //    int v_align = 0;
+//    //    bool bOk;
+
+//    QBrush brush;
+//    //    brush = QBrush(QColor("#9f000000"));
+//    brush.setTextureImage(image);
+
+//    painter->setBrush(brush);
+//    painter->setPen(Qt::NoPen);
+//    //    painter->drawRoundedRect(dx + 5, dy + 5, width() - 10, height() - 10,5,5);
+//    //    if(height() > 30)
+//    //        painter->drawRect(dx + 5, dy + 5, width() - 10, height() - 10);
+//    if(height() > 30)
+//        painter->drawRect(dx, dy, width(), height());
+//    //    painter->fillRect(0,0,w,h,brush);
+
+//    //        painter->setBrush(QColor("#bbdcec"));
+//    //        painter->setPen(Qt::NoPen);
+//    //        painter->fillRect(0,m_viewH - dy,m_viewW,dy,brush);
+//    //        painter->drawRect(cur_Block->x + dx,cur_Block->y + dy + d,cur_Block->width,-cur_Block->height + d1);
+
+//    //    if(dy > 0)
+//    //    {
+//    //        painter->setClipRect(0,m_viewH - dy,m_viewW,dy);
+//    ////        painter->fillRect(0,m_viewH - dy,m_viewW,dy,QColor(0,0,0,0));
+//    //    }
+//    //    else if(dy < 0)
+//    //    {
+//    //        painter->setClipRect(0,0,m_viewW,-dy);
+//    ////        painter->fillRect(0,0,m_viewW,-dy,QColor(0,0,0,0));
+
+//    //    }
+//    //    else
+//    //    {
+//    //        painter->setClipRect(0,0,m_viewW,m_viewH);
+//    ////        painter->fillRect(0,0,m_viewW,m_viewH,Qt::NoBrush);
+
+//    //    }
+//    bool firstDraw;
+//    int k;
+//    bool bExit = false;
+//    k = wichBlock(-dx,-dy);
+//    if(k < 0) k = 0;
+//    firstDraw = true;
+//    k = 0;
+//    EjString *curString, *curString2 = 0;
+//    //    if(m_statusMode == EDIT_CELL)
+//    //    {
+//    //        cur_Block = doc->lBlocks->at(activeBlock);
+//    //        QBrush brush(QColor("#1f000000"));
+//    //        QRegion r1(QRect(0,0,w,h));
+//    //        QRegion r2(QRect(cur_Block->x,cur_Block->y + dy - cur_Block->height,cur_Block->width,cur_Block->height));
+//    //        r1-=r2;
+//    //        painter->setClipRegion(r1);
+//    //        painter->fillRect(0,0,w,h,brush);
+//    //        painter->setClipping(false);
+//    //        painter->setBrush(Qt::NoBrush);
+//    //    }
+
+//    for(int row = 0 ; row < doc->lStrings->count(); row++)
+//    {
+//        if(bExit)
+//            break;
+//        curString = doc->lStrings->at(row);
+//        if(k < curString->startBlock)
+//            k = curString->startBlock;
+//        for(int i = k; i <= curString->endBlock; i++)
+//        {
+//            if(i == activeBlock && m_statusMode == EDIT_CELL)
+//            {
+//                curString2 = curString;
+//                //                    break;
+//            }
+//            //                else if(m_statusMode == EDIT_CELL)
+//            //                    continue;
+//            else if(!drawCell(i,w,h,dx,dy,select_area, firstDraw,painter, curString))
+//            {
+//                bExit = true;
+//                break;
+//            }
+
+//        }
+//    }
+
+//    if(m_statusMode == EDIT_CELL)
+//    {
+//        //        painter->setBrush(QColor("#0000000f"));
+//        BaseCellBlock *curCell = 0;
+//        cur_Block = doc->lBlocks->at(activeBlock);
+//        k = activeBlock;
+//        while(doc->lBlocks->at(k)->type != BASECELL)
+//            k--;
+//        if(k > -1)
+//            curCell = (BaseCellBlock*)doc->lBlocks->at(k);
+//        if(curCell)
+//        {
+//            if(curString2)
+//            {
+//                //                painter->fillRect(curCell->x,curCell->y + dy - curCell->height,curCell->width,curCell->height,QColor("#ffffffff"));
+//                k = activeBlock;
+//                drawCell(k,w,h,dx,dy,select_area, firstDraw,painter, curString2);
+//            }
+//            QBrush brush(QColor("#1f000000"));
+//            QRegion r1(QRect(0,0,w,h));
+//            QRegion r2(QRect(curCell->x,curCell->y + dy - curCell->height,curCell->width,curCell->height));
+//            r1-=r2;
+//            painter->setClipRegion(r1);
+//            if(m_showCell)
+//                brush = QBrush(QColor("#9f000000"));
+//            painter->fillRect(0,0,w,h,brush);
+//            painter->setClipping(false);
+//            painter->setBrush(Qt::NoBrush);
+
+//            if(m_showCell)
+//            {
+//                firstDraw = true;
+//                bExit = false;
+//                k = 0;
+//                for(int row = 0 ; row < doc->lStrings->count(); row++)
+//                {
+//                    if(bExit)
+//                        break;
+//                    curString = doc->lStrings->at(row);
+//                    if(k < curString->startBlock)
+//                        k = curString->startBlock;
+//                    for(int i = k; i <= curString->endBlock; i++)
+//                    {
+//                        if(i == activeBlock && m_statusMode == EDIT_CELL)
+//                        {
+//                            curString2 = curString;
+//                        }
+//                        else  if(!drawCell(i,w,h,dx,dy,select_area, firstDraw,painter, curString, true))
+//                        {
+//                            bExit = true;
+//                            break;
+//                        }
+//                    }
+//                }
+//            }
+//        }
+
+//    }
+//    //    if(activeBlock > -1)
+//    //    {
+//    //        cur_Block = doc->lBlocks->at(activeBlock);
+//    //        if(cur_Block->type == BASECELL && (m_statusMode == EDIT_TEXT || m_statusMode == EDIT_CELL))
+//    //        {
+//    //            painter->setPen(QColor("red"));
+//    //            painter->setBrush(Qt::NoBrush);
+
+//    //            painter->drawRect(cur_Block->x,cur_Block->y + dy,cur_Block->width,-cur_Block->height);
+//    //            painter->setPen(Qt::black);
+//    ////            painter->setBrush(brush);
+//    //        }
+//    //    }
+//}
+
+//bool EjTextControl::drawCell(int &index, int w, int h, int dx, int dy, bool select_area, bool &firstDraw, QPainter *painter, EjString *curString, bool showCell)
+//{
+//    EjBlock *cur_Block;
+//    EjTextBlock *cur_txtBlock;
+//    ContactBlock *cur_cntBlock;
+//    ImageBlock_old *cur_imageBlock;
+//    EjTableBlock *cur_TableBlock;
+//    QString txt;
+//    int cellHeight;
+
+//    int delta_start = 0;
+//    int delta_end = 0;
+//    static QImage image_check("://Style1/check@4x.png");
+//    //    static QImage image("://Style1/image6422.jpg");
+//    QList<EjFragmentBlock*> lActualFragments;
+//    QList<quint8> lKeys;
+//    QFont drawFont = currentFont;
+//    int h_align = 0;
+//    int v_align = 0;
+//    //    bool bOk;
+//    if(index > doc->lBlocks->count()-1)
+//        return false;
+//    cur_Block = doc->lBlocks->at(index);
+//    if(!cur_Block)
+//        return false;
+//    if(cur_Block->width == 0 || cur_Block->height == 0)
+//        return true;
+//    if(showCell && cur_Block->type != BASECELL)
+//        return true;
+//    //        if(dy > 0)
+//    //        {
+//    //            if(!(cur_Block->x + m_contentX <= m_viewW &&
+//    //                 cur_Block->x + cur_Block->width + m_contentX >=  0 &&
+//    //                 cur_Block->y - cur_Block->height + m_contentY <= m_viewH &&
+//    //                 cur_Block->y + m_contentY >=  m_viewH - dy ) )
+//    //                continue;
+//    //        }
+//    //        else if(dy < 0)
+//    //        {
+//    //            if(!(cur_Block->x + m_contentX <= m_viewW &&
+//    //                 cur_Block->x + cur_Block->width + m_contentX >=  0 &&
+//    //                 cur_Block->y - cur_Block->height + m_contentY <= -dy &&
+//    //                 cur_Block->y + m_contentY >=  0 ) )
+//    //                continue;
+//    //        }
+//    //        else
+//    //        {
+//    //            if(!(cur_Block->x + m_contentX <= m_viewW &&
+//    //                 cur_Block->x + cur_Block->width + m_contentX >=  0 &&
+//    //                 cur_Block->y - cur_Block->height + m_contentY <= m_viewH &&
+//    //                 cur_Block->y + m_contentY >=  0 ) )
+//    //                continue;
+//    //        }
+
+//    //        if(!(cur_Block->x + dx <= w &&
+//    //             cur_Block->x + cur_Block->width + dx >=  0 &&
+//    //             cur_Block->y - cur_Block->height + dy <= h &&
+//    //             cur_Block->y + dy >=  0 ) )
+//    //            continue;
+//    //        if(!(cur_Block->y - cur_Block->height + dy <= h &&
+//    //             cur_Block->y + dy >=  -5 ) )
+//    //            if(!(cur_Block->x + m_contentX > - m_viewW && cur_Block->x + m_contentX <  m_viewW * 6 &&
+//    //            cur_Block->y + m_contentY > - m_viewH * 3 && cur_Block->y + m_contentY <  m_viewH * 6  ))
+//    //           continue;
+
+
+
+//    //            if(cur_Block->y + dy < 0 ||
+//    //                    cur_Block->y - curString->height + dy >  h)
+
+//    if(cur_Block->type == BASECELL)
+//        cellHeight = cur_Block->height;
+//    else
+//        cellHeight = curString->height;
+//    //    if(cur_Block->y + dy < 0 ||
+//    //            cur_Block->y - cellHeight + dy >  h)
+//    //    {
+//    //        //            continue;
+//    //        if(firstDraw)
+//    //            return true;
+//    //        //            else if (cur_Block->type != BASECELL && cur_Block->type != CHECK)
+//    //        else
+//    //        {
+//    //            //                if(cur_Block->type != IMAGE)
+//    ////            bExit = true;
+//    //            return false;
+//    //        }
+//    //    }
+//    if(cur_Block->type != EXT_TABLE)
+//        firstDraw = false;
+
+//    drawFont = currentFont;
+//    h_align = 0;
+//    v_align = 0;
+//    lActualFragments.clear();
+//    lKeys.clear();
+//    //        if(cur_Block->type != BASECELL)
+//    {
+//        lActualFragments = getActualFragments(index);
+//        //        lKeys = lActualFragments.keys();
+//        for(int jj=0; jj<lActualFragments.count(); jj++)
+//        {
+//            switch (lActualFragments[jj]->vid) {
+//            case EjFragment::Bold:
+//                drawFont.setBold(true);
+//                break;
+//            case EjFragment::Italic:
+//                drawFont.setItalic(true);
+//                break;
+//            case EjFragment::Underline:
+//                drawFont.setUnderline(true);
+//                break;
+//                //            case EjFragment::AlignHAuto:
+//                //                h_align = 0;
+//                //                break;
+//                //            case EjFragment::AlignLeft:
+//                //                h_align = Qt::AlignLeft;
+//                //                break;
+//                //            case EjFragment::AlignRight:
+//                //                h_align = Qt::AlignRight;
+//                //                break;
+//                //            case EjFragment::AlignHCenter:
+//                //                h_align = Qt::AlignHCenter;
+//                //            case EjFragment::AlignVAuto:
+//                //                v_align = 0;
+//                //                break;
+//                //            case EjFragment::AlignTop:
+//                //                v_align = Qt::AlignTop;
+//                //                break;
+//                //            case EjFragment::AlignBottom:
+//                //                v_align = Qt::AlignBottom;
+//                //                break;
+//                //            case EjFragment::AlignVCenter:
+//                //                v_align = Qt::AlignVCenter;
+//            default:
+//                break;
+//            }
+
+//        }
+//    }
+//    //       return QFontMetrics(drawFont);
+
+//    QFontMetrics drawMetrics(drawFont);
+
+//    int d = drawMetrics.descent(), d1 = -2;
+//    if(cur_Block->type == BASECELL)
+//    {
+//        d = -2; d1 = 4;
+//        if(static_cast<BaseCellBlock*>(cur_Block)->vid == BaseCellBlock::ENDTABLE)
+//            return true;
+//    }
+
+//    if(select_area)
+//    {
+//        //index >= m_startSelectBlock &&    index <= m_endSelectBlock && cur_Block->type != EXT_TABLE )
+//        //cur_Block->type != EXT_TABLE && cur_Block->type != BASECELL
+//        if(m_statusMode == SELECTED && index >= m_startSelectBlock && index <= m_endSelectBlock && !isTable(index) )
+//        {
+//            painter->setBrush(QColor("#bbdcec"));
+//            painter->setPen(Qt::NoPen);
+//            //                qDebug() << "m_startSelectBlock " << m_startSelectBlock;
+//            //                qDebug() << "m_startSelectPos " << m_startSelectPos;
+//            //                qDebug() << "m_endSelectBlock " << m_endSelectBlock;
+//            //                qDebug() << "m_endSelectPos " << m_endSelectPos;
+//            if(index == m_startSelectBlock && cur_Block->type == TEXT)
+//            {
+//                txt = static_cast<EjTextBlock*>(cur_Block)->text;
+//                txt = txt.right(txt.size() - m_startSelectPos);
+//                delta_start = drawMetrics.horizontalAdvance(txt);
+//                delta_end = 0;
+//                if(index == m_endSelectBlock)
+//                {
+//                    txt = static_cast<EjTextBlock*>(cur_Block)->text;
+//                    txt = txt.right(txt.size() - m_endSelectPos);
+//                    delta_end = drawMetrics.horizontalAdvance(txt);
+//                }
+//                painter->drawRect(cur_Block->x + dx + cur_Block->width - delta_start,
+//                                  cur_Block->y + dy + d,delta_start-delta_end,-cur_Block->height + d1);
+//            }
+//            else if(index == m_endSelectBlock && cur_Block->type == TEXT)
+//            {
+//                txt = static_cast<EjTextBlock*>(cur_Block)->text;
+//                txt = txt.left(m_endSelectPos);
+//                delta_start = drawMetrics.horizontalAdvance(txt);
+//                painter->drawRect(cur_Block->x + dx,
+//                                  cur_Block->y + dy + d,delta_start,-cur_Block->height + d1);
+//            }
+//            else painter->drawRect(cur_Block->x + dx,cur_Block->y + dy + d,cur_Block->width,-cur_Block->height + d1);
+//        }
+//    }
+
+//    //        EjFragment *curFragment;
+//    //        QList<quint8>lKeys;
+
+//    //        for(int j = 0; j < lFragments.size(); j++)
+//    //        {
+//    //            curFragment = lFragments.at(j);
+//    //            if(i >= curFragment->startBlock && i <= curFragment->endBlock)
+//    //            {
+//    //                lKeys = curFragment->mParams.keys();
+//    //                for(int jj=0; jj<lKeys.size(); jj++)
+//    //                {
+//    //                    mActualParams.insert(lKeys[jj],curFragment->mParams.value(lKeys[jj]));
+//    //                }
+//    //            }
+//    //        }
+//    //    static int table_index;
+//    //        else
+//    {
+//        switch(doc->lBlocks->at(index)->type)
+//        {
+//        case EXT_TABLE:
+//            painter->setPen(QColor("#d2d0d0"));
+//            //                    painter->setPen(QColor(Qt::red));
+//            painter->setBrush(Qt::NoBrush);
+//            //                painter->setBrush(QColor("#F3F0F0"));
+//            cur_Block = doc->lBlocks->at(index);
+//            painter->drawRect(cur_Block->x,cur_Block->y + dy,cur_Block->width,-cur_Block->height);
+//            painter->setPen(Qt::black);
+//            //            table_index = 0;
+//            break;
+//        case BASECELL: {
+//            BaseCellBlock *cur_cell = (BaseCellBlock*)doc->lBlocks->at(index);
+//            int row = 0;
+//            int colum = 0;
+
+//            cur_TableBlock = cur_cell->parent;
+//            if(cur_TableBlock)
+//            {
+//                //                int start = doc->lBlocks->indexOf(cur_TableBlock) + 1;
+//                cellParams(cur_TableBlock,index,row,colum);
+//                if(showCell)
+//                {
+//                    //                    painter->setPen(QColor("#934d50"));
+//                    //                    int table_index = -1;
+//                    //                    for(int i = cur_TableBlock->startBlock+1; i <= cur_TableBlock->endBlock; i++ )
+//                    //                    {
+//                    //                        if(doc->lBlocks->at(i)->type == BASECELL)
+//                    //                            table_index++;
+//                    //                        if(i == index)
+//                    //                        {
+//                    //                            if(cur_TableBlock->nColums() > 0)
+//                    //                                row = (table_index) / cur_TableBlock->nColums();
+//                    //                            colum = table_index - row*cur_TableBlock->nColums();
+//                    //                            break;
+//                    //                        }
+//                    //                    }
+//                    painter->setPen(Qt::white);
+//                    txt = QString::number(cur_TableBlock->num) + QString('A' + colum) + QString::number(row+1);
+//                    painter->drawText(cur_cell->x + dx + 3,cur_cell->y + dy,cur_cell->width,-cur_cell->height, Qt::AlignCenter,txt);
+//                    painter->setPen(Qt::black);
+//                    break;
+//                }
+
+
+//                if(row % 2 == 0 && !(m_statusMode == EDIT_CELL && index == activeBlock) && cur_TableBlock->evenRowsColor.alpha() > 0)
+//                {
+
+//                    //                        painter->drawRect(doc->lBlocks->at(index)->x + dx,doc->lBlocks->at(index)->y + dy,doc->lBlocks->at(i)->width,-doc->lBlocks->at(index)->height);
+//                    //                            if(m_statusMode != SELECTED || i < m_startSelectBlock || i > m_endSelectBlock)
+//                    {
+//                        QBrush brush(cur_TableBlock->evenRowsColor);
+//                        //                                BaseCellBlock *cur_cell;
+//                        //                EjBlock *cur_Block;
+
+//                        //                                int index;
+//                        //                        brush.setTextureImage(image);
+//                        painter->setBrush(brush);
+
+//                        painter->setPen(Qt::NoPen);
+//                        //                                painter->drawRect(0,doc->lBlocks->at(index)->y + dy,m_width,-doc->lBlocks->at(index)->height);
+//                        painter->drawRect(cur_cell->x,cur_cell->y + dy,cur_cell->width,-cur_cell->height);
+//                        painter->setPen(Qt::black);
+//                    }
+//                }
+//                else
+//                {
+//                    painter->setPen(cur_TableBlock->borderColor);
+//                    painter->setBrush(Qt::NoBrush);
+//                    //                    cur_Block = doc->lBlocks->at(index);
+//                    //                    painter->drawRect(cur_Block->x,cur_Block->y + dy,cur_Block->width,-cur_Block->height);
+//                    painter->drawRect(cur_cell->x,cur_cell->y + dy,cur_cell->width,-cur_cell->height);
+//                    painter->setPen(Qt::black);
+//                }
+
+//            }
+
+//            if(m_statusMode == SELECTED && isCellSelected(index) )
+//            {
+//                painter->setBrush(QColor("#bbdcec"));
+//                painter->setPen(Qt::NoPen);
+//                //                                painter->drawRect(0,doc->lBlocks->at(index)->y + dy,m_width,-doc->lBlocks->at(index)->height);
+//                painter->drawRect(cur_cell->x,cur_cell->y + dy - 2,cur_cell->width,-cur_cell->height + 4);
+//                painter->setPen(Qt::black);
+//            }
+
+//            if(cur_cell)
+//            {
+//                if(m_inputSelectMode == true && index == activeBlock)
+//                {
+//                    drawFont.setUnderline(true);
+//                }
+//                painter->setFont(drawFont);
+//                painter->setPen(Qt::black);
+//                if(index == activeBlock && m_statusMode == EDIT_CELL)
+//                    painter->drawText(cur_cell->txt_x + dx,cur_cell->txt_y + dy, cur_cell->text);
+//                //                painter->drawText(cur_cell->x + dx+3,cur_cell->y + dy,cur_cell->width,-cur_cell->height, Qt::AlignLeft,cur_cell->text);
+//                //                painter->drawText(cur_cell->x + dx+3,cur_cell->y + dy,cur_cell->width,-cur_cell->height, Qt::AlignLeft | Qt::AlignVCenter,cur_cell->text);
+//                else
+//                {
+//                    if(h_align == 0)
+//                    {
+//                        if(cur_cell->vid == BaseCellBlock::NUMBER || cur_cell->vid == BaseCellBlock::FORMULA)
+//                            h_align = Qt::AlignRight;
+//                        else
+//                            h_align = Qt::AlignLeft;
+//                    }
+//                    //                    if(v_align == 0)
+//                    //                        v_align = Qt::AlignVCenter;
+//                    //                    painter->drawText(cur_cell->x + dx + 3,cur_cell->y + dy,cur_cell->width - 6,-cur_cell->height, h_align | v_align,cur_cell->text);
+//                    painter->drawText(cur_cell->txt_x + dx,cur_cell->txt_y + dy,cur_cell->text);
+//                }
+//                if(cur_cell->vid == BaseCellBlock::CHECK && cur_cell->width > 0 && cur_cell->height > 0)
+//                {
+
+//                    painter->setBrush(Qt::NoBrush);
+//                    int cell_y = cur_cell->y + dy + m_interval * 0.5 - cur_cell->height;
+//                    int cell_h = 16*scaleSize;
+//                    painter->drawRoundedRect(cur_cell->x+dx+5*scaleSize,cell_y + 2*scaleSize,cell_h,cell_h, 2*scaleSize, 2*scaleSize);
+//                    //                    painter->drawRoundedRect(cur_cell->x+dx+5*scaleSize,cur_cell->y +dy -4*scaleSize,16*scaleSize,-16*scaleSize, 2*scaleSize, 2*scaleSize);
+//                    cell_h = 10.5*scaleSize;
+//                    if(((BaseCellBlock*)cur_cell)->value > 0 )
+//                        painter->drawImage(QRectF(cur_cell->x+dx+3*scaleSize,cell_y + 0*scaleSize,cell_h*2,cell_h*2),image_check); //0,0,200*scaleSize,200*scaleSize
+//                    //                        painter->drawImage(QRectF(cur_cell->x+dx+9*scaleSize,cell_y + 6.5*scaleSize,cell_h,cell_h),image_check); //0,0,200*scaleSize,200*scaleSize
+//                    //                    painter->drawImage(QRectF(cur_cell->x+dx+9*scaleSize,cur_cell->y +dy -17*scaleSize,10.5*scaleSize,10.5*scaleSize),image_check); //0,0,200*scaleSize,200*scaleSize
+//                }
+
+//                if(m_inputSelectMode == true && index == activeBlock)
+//                {
+//                    drawFont.setUnderline(false);
+//                }
+//                while(index < doc->lBlocks->count() - 1 && doc->lBlocks->at(index + 1)->type != BASECELL && doc->lBlocks->at(index + 1)->type != EXT_TABLE)
+//                {
+//                    index++;
+//                    drawCell(index,w,h,dx,dy,select_area,firstDraw,painter,curString,showCell);
+//                }
+//            }
+//        }
+//            break;
+
+//        case TEXT:
+//            //            case TABLECELL:
+//            cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(index);
+//            if(cur_txtBlock)
+//            {
+//                if(m_inputSelectMode == true && index == activeBlock)
+//                {
+//                    drawFont.setUnderline(true);
+//                }
+//                painter->setFont(drawFont);
+//                painter->setPen(Qt::black);
+//                //                 painter->setPen(Qt::NoPen);
+//                //                 painter->setBrush(Qt::black);
+//                //                 QPainterPath p;
+//                //                 p.addText(0,0, painter->font(), cur_txtBlock->text);
+//                //                 QList<QPolygonF> poly = p.toFillPolygons();
+//                //                for(int j = poly.size()-1; j != -1; j--)
+//                //                        painter->drawPolygon(poly[j]);
+//                //                QStaticText stText(cur_txtBlock->text);
+//                //                painter->drawText(cur_txtBlock->x + dx,cur_txtBlock->y + dy - curString->descent,cur_txtBlock->text);
+//                //                painter->drawStaticText(cur_txtBlock->x + dx,cur_txtBlock->y + dy - curString->descent,stText);
+//                QGlyphRun glyphrun;
+//                QRawFont raw_font = QRawFont::fromFont(drawFont, QFontDatabase::Latin);
+//                glyphrun.setRawFont(raw_font);
+//                glyphrun.setGlyphIndexes(raw_font.glyphIndexesForString(cur_txtBlock->text));
+
+//                painter->drawGlyphRun(QPoint(cur_txtBlock->x + dx,cur_txtBlock->y + dy - curString->ascent),glyphrun);
+//                //                QRawFont raw_font = QRawFont::fromFont(drawFont, QFontDatabase::Latin);
+
+//                //                qreal line_width = raw_font.averageCharWidth() * cur_txtBlock->text.size();
+//                ////                QSGRenderContext *sgr = QQuickItemPrivate::get(m_owner)->sceneGraphRenderContext();
+//                //                QTextLayout layout(cur_txtBlock->text,drawFont);
+//                //                layout.beginLayout();
+//                //                QTextLine line = layout.createLine();
+//                //                line.setLineWidth(line_width);
+//                //                //Q_ASSERT(!layout.createLine().isValid());
+//                //                layout.endLayout();
+//                //                QList<QGlyphRun> glyphRuns = line.glyphRuns();
+//                //                qreal xpos = cur_txtBlock->x + dx;
+//                //                for (int i = 0; i < glyphRuns.size(); i++) {
+//                //                    painter->drawGlyphRun(QPoint(xpos,cur_txtBlock->y + dy - curString->descent),glyphRuns.at(i));
+//                ////                    node->setGlyphs(QPointF(xpos, y + raw_font.ascent()), glyphRuns.at(i));
+//                //                    xpos += raw_font.averageCharWidth() * glyphRuns.at(i).positions().size();
+//                //                }
+
+//                if(m_inputSelectMode == true && index == activeBlock)
+//                {
+//                    drawFont.setUnderline(false);
+//                }
+//            }
+//            break;
+//        case CONTACT:
+//            cur_cntBlock = (ContactBlock*)doc->lBlocks->at(index);
+//            if(cur_cntBlock)
+//            {
+//                currentFont.setUnderline(true);
+//                painter->setFont(currentFont);
+//                painter->setPen(Qt::blue);
+//                painter->drawText(cur_cntBlock->x + dx,cur_cntBlock->y + dy,cur_cntBlock->name);
+//                currentFont.setUnderline(false);
+//            }
+//            break;
+//        case IMAGE:
+//            cur_imageBlock = (ImageBlock_old*)doc->lBlocks->at(index);
+//            if(cur_imageBlock)
+//            {
+//                int _x = cur_imageBlock->x + dx + 4*scaleSize;
+//                int _y = cur_imageBlock->y - cur_imageBlock->height + dy+ 4*scaleSize;
+//                //                    int _width = cur_imageBlock->small_image.width() - 8*scaleSize;
+//                //                    int _height = cur_imageBlock->small_image.height() - 8*scaleSize;
+//                int _width = cur_imageBlock->width - 8*scaleSize;
+//                int _height = cur_imageBlock->height - 8*scaleSize;
+//                painter->setPen(QColor("#9d9bad"));
+//                painter->drawLine(cur_imageBlock->x+dx,cur_imageBlock->y+dy,cur_imageBlock->x+dx+8*scaleSize,cur_imageBlock->y+dy);
+//                painter->drawLine(cur_imageBlock->x+dx,cur_imageBlock->y+dy,cur_imageBlock->x+dx,cur_imageBlock->y+dy-8*scaleSize);
+//                painter->drawLine(cur_imageBlock->x+dx + cur_imageBlock->width,cur_imageBlock->y+dy,cur_imageBlock->x+dx + cur_imageBlock->width-8*scaleSize,cur_imageBlock->y+dy);
+//                painter->drawLine(cur_imageBlock->x+dx + cur_imageBlock->width,cur_imageBlock->y+dy,cur_imageBlock->x+dx + cur_imageBlock->width,cur_imageBlock->y+dy-8*scaleSize);
+//                painter->drawLine(cur_imageBlock->x+dx + cur_imageBlock->width,cur_imageBlock->y+dy-cur_imageBlock->height,cur_imageBlock->x+dx + cur_imageBlock->width-8*scaleSize,cur_imageBlock->y+dy-cur_imageBlock->height);
+//                painter->drawLine(cur_imageBlock->x+dx + cur_imageBlock->width,cur_imageBlock->y+dy-cur_imageBlock->height,cur_imageBlock->x+dx + cur_imageBlock->width,cur_imageBlock->y+dy-cur_imageBlock->height+8*scaleSize);
+//                painter->drawLine(cur_imageBlock->x+dx,cur_imageBlock->y+dy-cur_imageBlock->height,cur_imageBlock->x+dx+8*scaleSize,cur_imageBlock->y+dy-cur_imageBlock->height);
+//                painter->drawLine(cur_imageBlock->x+dx,cur_imageBlock->y+dy-cur_imageBlock->height,cur_imageBlock->x+dx,cur_imageBlock->y-cur_imageBlock->height+dy+8*scaleSize);
+//                //                    painter->drawRect(cur_imageBlock->x + dx,cur_imageBlock->y - cur_imageBlock->height + dy,cur_imageBlock->width,cur_imageBlock->height);
+
+//                painter->drawImage(QRectF(_x,_y,_width,_height), cur_imageBlock->small_image);
+//            }
+//        default:
+//            break;
+
+//        }
+//    }
+
+//    return true;
+
+//}
+
+//int EjTextControl::drawLens(QPainter *painter, int w, int h, float scale, int *_delta)
+//{
+//    int cur1 = 0;
+//    int cur2 = 0;
+//    int cur3;
+//    int delta = 0;
+//    int delta_start;
+//    int delta_end;
+//    EjTextBlock *cur_txtBlock;
+//    ContactBlock *cur_cntBlock;
+//    EjBlock *cur_Block;
+//    //    int ind_string;
+//    //    int ind_block;
+//    QString txt;
+//    painter->setClipRect(0,0,w,h);
+//    if(doc->lBlocks->isEmpty()) return 0;
+//    cur2 = doc->lStrings->size() -1;
+//    while(1)
+//    {
+//        if(cur2 - cur1 <= 1)
+//        {
+//            break;
+//        }
+//        cur3 = (cur1 + cur2) / 2;
+//        if(m_posCursorY < doc->lStrings->at(cur3)->y + doc->lStrings->at(cur3)->height)
+//        {
+//            cur2 = cur3;
+//        }
+//        else cur1 = cur3;
+//    }
+//    //+ doc->lStrings[cur2]->height
+//    if(m_posCursorY < (doc->lStrings->at(cur1)->y + m_interval))
+//        cur3 = cur1;
+//    else cur3 = cur2;
+//    cur1 = doc->lStrings->at(cur3)->startBlock;
+//    cur2 = doc->lStrings->at(cur3)->endBlock;
+
+//    painter->save();
+//    painter->scale(scale,scale);
+//    float k = w / scale / m_width;
+//    //    float k = scale / m_width;
+//    delta = m_posCursorX * (1 - k);
+//    if(delta < 0) delta = 0;
+//    else if(m_posCursorX > m_width - rightColontitul)
+//    {
+//        delta = m_posCursorX - (w - rightColontitul ) / scale;
+//    }
+
+//    for(int i = cur1; i <= cur2; i++)
+//    {
+//        //        QMap<quint8,Param> mActualParams = getActualParams(i);
+//        QFont drawFont = currentFont;
+//        //        QList<quint8> lKeys = mActualParams.keys();
+//        //        for(int jj=0; jj<lKeys.size(); jj++)
+//        //        {
+//        //            switch (lKeys[jj]) {
+//        //            case EjFragment::Bold:
+//        //                drawFont.setBold(true);
+//        //                break;
+//        //            case EjFragment::Italic:
+//        //                drawFont.setItalic(true);
+//        //                break;
+//        //            case EjFragment::Underline:
+//        //                drawFont.setUnderline(true);
+//        //                break;
+//        //            default:
+//        //                break;
+//        //            }
+
+//        //        }
+
+//        QFontMetrics drawMetrics(drawFont);
+
+
+//        if(m_statusMode == SELECTED && i >= m_startSelectBlock && i <= m_endSelectBlock)
+//        {
+//            painter->setBrush(QColor("#bbdcec"));
+//            painter->setPen(Qt::NoPen);
+//            cur_Block = doc->lBlocks->at(i);
+//            if(i == m_startSelectBlock && cur_Block->type == TEXT)
+//            {
+//                txt = static_cast<EjTextBlock*>(cur_Block)->text;
+//                txt = txt.right(txt.size() - m_startSelectPos);
+//                delta_start = drawMetrics.horizontalAdvance(txt);
+//                delta_end = 0;
+//                if(i == m_endSelectBlock)
+//                {
+//                    txt = static_cast<EjTextBlock*>(cur_Block)->text;
+//                    txt = txt.right(txt.size() - m_endSelectPos);
+//                    delta_end = drawMetrics.horizontalAdvance(txt);
+//                }
+//                painter->drawRect(cur_Block->x - delta + cur_Block->width - delta_start,
+//                                  h / 2 / scale + cur_Block->height / scale / 2 + 2,delta_start-delta_end,-cur_Block->height);
+//            }
+//            else if(i == m_endSelectBlock && cur_Block->type == TEXT)
+//            {
+//                txt = static_cast<EjTextBlock*>(cur_Block)->text;
+//                txt = txt.left(m_endSelectPos);
+//                delta_start = metric.width(txt);
+//                painter->drawRect(cur_Block->x - delta,
+//                                  h / 2 / scale + cur_Block->height / scale / 2 + 2,delta_start,-cur_Block->height);
+//            }
+//            else painter->drawRect(cur_Block->x - delta,h / 2 / scale + cur_Block->height / scale / 2 + 2,cur_Block->width,-cur_Block->height);
+//        }
+
+//        switch(doc->lBlocks->at(i)->type)
+//        {
+//        case TEXT:
+//            cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(i);
+//            if(cur_txtBlock)
+//            {
+//                if(m_inputSelectMode == true && i == activeBlock)
+//                {
+//                    drawFont.setUnderline(true);
+//                }
+//                painter->setFont(drawFont);
+//                painter->setPen(Qt::black);
+//                //+ cur_txtBlock->height * scale / 4
+//                painter->drawText(cur_txtBlock->x - delta,h / 2 / scale + cur_txtBlock->height / scale / 2,cur_txtBlock->text);
+//                //                if(m_inputSelectMode == true && i == activeBlock)
+//                //                {
+//                //                    drawFont.setUnderline(false);
+//                //                }
+//            }
+//            break;
+//        case CONTACT:
+//            cur_cntBlock = (ContactBlock*)doc->lBlocks->at(i);
+//            if(cur_cntBlock)
+//            {
+//                currentFont.setUnderline(true);
+//                painter->setFont(currentFont);
+//                painter->setPen(Qt::blue);
+//                //                painter->drawText(cur_cntBlock->x + dx,cur_cntBlock->y + dy,cur_cntBlock->name);
+//                painter->drawText(cur_cntBlock->x - delta,h / 2 / scale + cur_cntBlock->height / scale / 2,cur_cntBlock->name);
+//                currentFont.setUnderline(false);
+//            }
+//            break;
+//        default:
+//            break;
+
+//        }
+
+
+//    }
+//    painter->restore();
+//    if(_delta) *_delta = delta;
+//    return (m_posCursorX - delta) * scale;
+
+
+//}
 
 void EjTextControl::setWidth(int width)
 {
@@ -828,6 +1663,9 @@ void EjTextControl::setHeight(int height)
 
 void EjTextControl::calcCursor(bool force)
 {
+    if (doc == nullptr){
+        return;
+    }
     int x,y;
     QString str;
     int leftControl;
@@ -865,7 +1703,7 @@ void EjTextControl::calcCursor(bool force)
         }
         if(h == 0)
         {
-			EjTextStyle *textStyle = getTextStyle(0);
+            EjTextStyle *textStyle = getTextStyle(0);
             if(textStyle)
             {
                 h = textStyle->fontSize()  * 100 * 0.347;
@@ -893,8 +1731,8 @@ void EjTextControl::calcCursor(bool force)
         {
             QFontMetrics drawMetrics = getDrawMetrics(activeIndex);
 
-			str = static_cast<EjTextBlock*>(curBlock)->text.left(position);
-			m_deltapos = drawMetrics.horizontalAdvance(str) * 100 * 0.347;
+            str = static_cast<EjTextBlock*>(curBlock)->text.left(position);
+            m_deltapos = drawMetrics.horizontalAdvance(str) * 100 * 0.347;
             x += m_deltapos;
         }
         else if(curBlock->type == ENTER)
@@ -913,7 +1751,7 @@ void EjTextControl::calcCursor(bool force)
         {
             QFontMetrics drawMetrics = getDrawMetrics(activeIndex);
             int h = drawMetrics.height() * 100 * 0.347 + m_interval*1.5;
-			EjTableBlock *table = isTable(activeIndex);
+            EjTableBlock *table = isTable(activeIndex);
             x = curBlock->x + table->spacing;
             isPositionChanged = true;
 
@@ -946,10 +1784,14 @@ void EjTextControl::calcCursor(bool force)
         if(isHeightChanged)
             emit cursorHeightChanged(m_heightCursor);
     }
+
 }
 
 void EjTextControl::calcData(bool force)
 {
+    if (doc == nullptr){
+        return;
+    }
     m_calcIndex -= 5000;
     if(m_calcIndex < 0)
         m_calcIndex = 0;
@@ -960,6 +1802,9 @@ void EjTextControl::calcData(bool force)
 
 void EjTextControl::calcNext(bool force)
 {
+    if (doc == nullptr){
+        return;
+    }
     if(doc->lBlocks->count() == 0)
         return;
     int index = m_calcIndex;
@@ -975,15 +1820,17 @@ void EjTextControl::calcNext(bool force)
 
 void EjTextControl::setCursor(int x, int y)
 {
+    if (doc == nullptr){
+        return;
+    }
     int cur1 = 0;
     int cur2 = 0;
     int cur3;
     int newActiveBlock;
     m_startCursor = false;
-
     QString txt;
     newActiveBlock = wichBlock(x,y);
-	EjTableBlock *table = isTable(newActiveBlock);
+    EjTableBlock *table = isTable(newActiveBlock);
 
     if(m_statusMode == EDIT_CELL && newActiveBlock != activeIndex)
     {
@@ -1027,16 +1874,19 @@ void EjTextControl::setCursor(int x, int y)
 
     if(doc->lBlocks->at(activeIndex)->type == TEXT || doc->lBlocks->at(activeIndex)->type == BASECELL)
     {
+        bool is_remove = false;
+        EjTextBlock *cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+
         QFontMetrics drawMetrics = getDrawMetrics(activeIndex);
         QString str3;
         position = 0;
 
-		txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
+        txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
         cur1 = 0;
         cur2 = txt.size();
         int d1 = doc->lBlocks->at(activeIndex)->x;
         str3 = txt;
-		int d3 = drawMetrics.horizontalAdvance(str3) * 100 * 0.347;
+        int d3 = drawMetrics.horizontalAdvance(str3) * 100 * 0.347;
         while(1)
         {
             if(cur2 - cur1 <= 1)
@@ -1045,7 +1895,7 @@ void EjTextControl::setCursor(int x, int y)
             }
             cur3 = (cur1 + cur2) / 2;
             str3 = txt.left(cur3);
-			d3 = drawMetrics.horizontalAdvance(str3) * 100 * 0.347 + doc->lBlocks->at(activeIndex)->x;
+            d3 = drawMetrics.horizontalAdvance(str3) * 100 * 0.347 + doc->lBlocks->at(activeIndex)->x;
             if(x < d3)
             {
                 cur2 = cur3;
@@ -1056,27 +1906,27 @@ void EjTextControl::setCursor(int x, int y)
             }
         }
         str3 = txt.left(cur2);
-		position_w = drawMetrics.horizontalAdvance(str3) * 100 * 0.347;
+        position_w = drawMetrics.horizontalAdvance(str3) * 100 * 0.347;
         d3 = position_w + doc->lBlocks->at(activeIndex)->x;
         if(abs(x-d1) <= abs(d3-x)) position = cur1;
         else position = cur2;
         if(doc->lBlocks->at(activeIndex)->type == BASECELL && doc->lBlocks->at(activeIndex + 1)->type != BASECELL)
         {
-			while(activeIndex <  doc->lBlocks->count() - 1
-				  && (doc->lBlocks->at(activeIndex + 1)->type != BASECELL
-					  && doc->lBlocks->at(activeIndex + 1)->type != END_GROUP))
-				activeIndex++;
-			if(doc->lBlocks->at(activeIndex)->type == TEXT)
-			{
-				txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
-				position = txt.length();
-			}
-			else
-				position = 0;
-//            }
+            EjCellBlock *curCell = (EjCellBlock*)doc->lBlocks->at(activeIndex);
+                while(activeIndex <  doc->lBlocks->count() - 1
+                      && (doc->lBlocks->at(activeIndex + 1)->type != BASECELL
+                          && doc->lBlocks->at(activeIndex + 1)->type != END_GROUP))
+                    activeIndex++;
+                if(doc->lBlocks->at(activeIndex)->type == TEXT)
+                {
+                    txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text;
+                    position = txt.count();
+                }
+                else
+                    position = 0;
         }
         str3 = txt.left(position);
-		position_w = drawMetrics.horizontalAdvance(str3) * 100 * 0.347;
+        position_w = drawMetrics.horizontalAdvance(str3) * 100 * 0.347;
 
     }
     else if(activeIndex == 0 && doc->lBlocks->at(activeIndex)->type == ENTER)
@@ -1103,8 +1953,6 @@ void EjTextControl::startSelected(int x, int y)
     }
     else
     {
-
-
         if(doc->lBlocks->at(activeIndex)->type == TEXT && m_startSelectBlock == m_endSelectBlock)
         {
             if(position <= (m_startSelectPos + m_endSelectPos) / 2)
@@ -1177,10 +2025,11 @@ int EjTextControl::wichBlock(int x, int y)
     int cur1 = 0;
     int cur2 = 0;
     int cur3;
+    int cur4;
     int res = -1;
     EjGroupBlock *cur_block;
-	EjCellBlock *curCell;
-    JString *curString;
+    EjCellBlock *curCell;
+    EjString *curString;
     EjBlock *block;
     if(doc->lBlocks->isEmpty() || doc->lStrings->isEmpty())
         return res;
@@ -1192,7 +2041,7 @@ int EjTextControl::wichBlock(int x, int y)
             break;
         }
         cur3 = (cur1 + cur2) / 2;
-        if(y < doc->lStrings->at(cur3)->y + doc->lStrings->at(cur3)->height)  //+ doc->lStrings->at(cur3)->height
+        if(y < doc->lStrings->at(cur3)->y + doc->lStrings->at(cur3)->height)
         {
             cur2 = cur3;
         }
@@ -1207,16 +2056,14 @@ int EjTextControl::wichBlock(int x, int y)
     cur2 = curString->endBlock;
     if(cur2 > doc->lBlocks->count() - 1)
         cur2 = doc->lBlocks->count() - 1;
-
     if(cur1 < 0)
         cur1 = 0;
     if(cur2 < 0)
         cur2 = 0;
-
     while(1)
     {
         qDebug() << "while 2" << cur1 << cur2 << cur3;
-		if(doc->lBlocks->at(cur1)->m_parent != NULL && !doc->lBlocks->at(cur1)->m_parent->isGlassy())
+        if(doc->lBlocks->at(cur1)->parent != NULL && !doc->lBlocks->at(cur1)->parent->isGlassy())
         {
             block = doc->lBlocks->at(cur1);
             block = block->rootBlock();
@@ -1227,7 +2074,7 @@ int EjTextControl::wichBlock(int x, int y)
             }
         }
         cur3 = cur2;
-		if(doc->lBlocks->at(cur2)->m_parent != NULL && !doc->lBlocks->at(cur2)->m_parent->isGlassy())
+        if(doc->lBlocks->at(cur2)->parent != NULL && !doc->lBlocks->at(cur2)->parent->isGlassy())
         {
             block = doc->lBlocks->at(cur2);
             block = block->rootBlock();
@@ -1255,7 +2102,7 @@ int EjTextControl::wichBlock(int x, int y)
             cur3++;
         while(doc->lBlocks->at(cur3)->isProperty() && cur3 < doc->lBlocks->count() - 1)
             cur3++;
-		if(doc->lBlocks->at(cur3)->m_parent != NULL && !doc->lBlocks->at(cur3)->m_parent->isGlassy())
+        if(doc->lBlocks->at(cur3)->parent != NULL && !doc->lBlocks->at(cur3)->parent->isGlassy())
         {
             block = doc->lBlocks->at(cur3);
             block = block->rootBlock();
@@ -1287,8 +2134,8 @@ int EjTextControl::wichBlock(int x, int y)
     }
     if(res < 0)
         return res;
-	EjTableBlock *table = 0;
-	foreach(EjTableBlock *curTable, *doc->lTables)
+    EjTableBlock *table = 0;
+    foreach(EjTableBlock *curTable, *doc->lTables)
     {
         if(res >= curTable->m_index && res <= (curTable->m_index + curTable->m_counts))
         {
@@ -1311,16 +2158,15 @@ int EjTextControl::wichBlock(int x, int y)
                 if(curCell)
                     break;
                 if(x >= doc->lBlocks->at(i)->x && x <= doc->lBlocks->at(i)->x + doc->lBlocks->at(i)->width
-                        //                        && y <= doc->lBlocks->at(i)->y && y >= doc->lBlocks->at(i)->y-doc->lBlocks->at(i)->height)
                         && y >= doc->lBlocks->at(i)->y && y <= doc->lBlocks->at(i)->y + doc->lBlocks->at(i)->ascent)
                 {
-						curCell = (EjCellBlock*)doc->lBlocks->at(i);
+                        curCell = (EjCellBlock*)doc->lBlocks->at(i);
                         res = i;
                         d1 = (curCell->x - x) * (curCell->x - x) + (curCell->y - y) * (curCell->y - y);
                         d2 = (curCell->x + curCell->width - x) * (curCell->x + curCell->width - x) + (curCell->y + curCell->height() - y) * (curCell->y + curCell->height() - y);
                         if(curCell->visible == false)
                         {
-							curCell = (EjCellBlock*)curCell->m_parent;
+                            curCell = (EjCellBlock*)curCell->parent;
                             res = doc->lBlocks->indexOf(curCell);
                             d1 = (curCell->x - x) * (curCell->x - x) + (curCell->y - y) * (curCell->y - y);
                             d2 = (curCell->x + curCell->width - x) * (curCell->x + curCell->width - x) + (curCell->y + curCell->height() - y) * (curCell->y + curCell->height() - y);
@@ -1338,7 +2184,7 @@ int EjTextControl::wichBlock(int x, int y)
                     curCell = table->currentCell(i);
                     if(curCell->visible == false)
                     {
-						curCell = (EjCellBlock*)curCell->m_parent;
+                        curCell = (EjCellBlock*)curCell->parent;
                         res = doc->lBlocks->indexOf(curCell);
                     }
                     break;
@@ -1356,6 +2202,7 @@ int EjTextControl::wichBlock(int x, int y)
                     }
                 }
             }
+
         }
     }
     if(res > -1)
@@ -1391,7 +2238,7 @@ void EjTextControl::selectBlock(int x, int y)
 {
     int sel_block = wichBlock(x,y);
     if(sel_block < 0) return;
-	EjTableBlock *table = isTable(sel_block);
+    EjTableBlock *table = isTable(sel_block);
     m_startSelectBlock = m_endSelectBlock = sel_block;
     m_startSelectPos = m_endSelectPos = 0;
     if(table && m_statusMode != EDIT_CELL)
@@ -1413,7 +2260,7 @@ void EjTextControl::selectBlock(int x, int y)
                 break;
             m_endSelectBlock++;
         }
-		m_endSelectPos = static_cast<EjTextBlock*>(doc->lBlocks->at(m_endSelectBlock))->text.size();
+        m_endSelectPos = static_cast<EjTextBlock*>(doc->lBlocks->at(m_endSelectBlock))->text.size();
     }
 }
 
@@ -1442,7 +2289,7 @@ void EjTextControl::cursorLeft()
         activeIndex = index;
     if(m_statusMode == EDIT_TEXT)
     {
-		EjTableBlock *table = isTable(activeIndex);
+        EjTableBlock *table = isTable(activeIndex);
         if(table)
         {
             activeIndex = table->currCellIndex(activeIndex);
@@ -1450,7 +2297,7 @@ void EjTextControl::cursorLeft()
                 activeIndex = 0;
         }
     }
-    if(doc->lBlocks->at(activeIndex)->type == TEXT) // || (doc->lBlocks->at(activeIndex)->type == BASECELL  && m_statusMode == EDIT_CELL))
+    if(doc->lBlocks->at(activeIndex)->type == TEXT)
     {
 
         if(position > 0)
@@ -1459,7 +2306,7 @@ void EjTextControl::cursorLeft()
             if(position == 0 && activeIndex > 0 && doc->lBlocks->at(activeIndex-1)->type == END_GROUP)
                 changeActive = true;
         }
-        else if(activeIndex > 0) //s && doc->lBlocks->at(activeIndex - 1)->type != BASECELL)
+        else if(activeIndex > 0)
         {
             changeActive = true;
         }
@@ -1482,10 +2329,12 @@ void EjTextControl::cursorLeft()
 
 		if(index > -1 && m_statusMode == EDIT_TEXT && doc->lBlocks->at(index)->type == BASECELL)
                 activeIndex = index;
+
         if(doc->lBlocks->at(activeIndex)->type == SPACE || doc->lBlocks->at(activeIndex)->type == ENTER )
         {
             if(activeIndex > 0 && (doc->lBlocks->at(activeBlock_back)->type == TEXT ||
                                    doc->lBlocks->at(activeBlock_back)->type == BASECELL))
+                //            if(activeBlock > 0)
             {
                 activeBlock_back = activeIndex;
                 activeIndex--;
@@ -1496,7 +2345,7 @@ void EjTextControl::cursorLeft()
         }
         if(activeBlock_back != activeIndex && doc->lBlocks->at(activeIndex)->type == TEXT) // || doc->lBlocks->at(activeIndex)->type == BASECELL)
         {
-			position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
+            position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
             if(doc->lBlocks->at(activeBlock_back)->type == TEXT)
             {
                 position--;
@@ -1518,6 +2367,7 @@ void EjTextControl::cursorLeft()
                     count_groups--;
             }
         }
+
     }
     else if(changeActive && activeIndex == 0)
     {
@@ -1540,7 +2390,7 @@ void EjTextControl::cursorRight()
     }
     if(m_statusMode == EDIT_TEXT)
     {
-		EjTableBlock *table = isTable(activeIndex);
+        EjTableBlock *table = isTable(activeIndex);
         if(table)
         {
             activeIndex = table->currCellIndex(activeIndex);
@@ -1550,7 +2400,7 @@ void EjTextControl::cursorRight()
     }
     if(activeIndex > -1 && (doc->lBlocks->at(activeIndex)->type == TEXT)) // || (doc->lBlocks->at(activeIndex)->type == BASECELL && m_statusMode == EDIT_CELL)))
     {
-		if(position < static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size()) position++;
+        if(position < static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size()) position++;
         else if(activeIndex < doc->lBlocks->count() - 1)
         {
             if(m_statusMode == EDIT_CELL)
@@ -1580,7 +2430,7 @@ void EjTextControl::cursorRight()
     {
         if(activeIndex > -1 && m_statusMode == EDIT_TEXT && doc->lBlocks->at(activeIndex)->type == BASECELL )
         {
-			EjTableBlock *table = isTable(activeIndex);
+            EjTableBlock *table = isTable(activeIndex);
             if(table)
                 activeIndex = table->nextCell(activeIndex);
         }
@@ -1596,8 +2446,11 @@ void EjTextControl::cursorRight()
             }
             else
                 index++;
+            bool isAllProperty = true;
             while(doc->lBlocks->at(index)->isProperty() && index < doc->lBlocks->count() - 1)
             {
+                isAllProperty = false;
+
                 if(m_statusMode == EDIT_CELL)
                 {
                     if(doc->lBlocks->at(index + 1)->type != BASECELL)
@@ -1616,7 +2469,7 @@ void EjTextControl::cursorRight()
                 position = 0;
             }
         }
-		if(doc->lBlocks->at(activeIndex)->type == TEXT && static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size() > position)
+        if(doc->lBlocks->at(activeIndex)->type == TEXT && static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size() > position)
             position++;
 
     }
@@ -1625,7 +2478,7 @@ void EjTextControl::cursorRight()
 
 void EjTextControl::worldLeft()
 {
-	EjTableBlock *table = isTable(activeIndex);
+    EjTableBlock *table = isTable(activeIndex);
     if(table && m_statusMode == EDIT_TEXT)
         return;
     if(activeIndex < 0)
@@ -1658,7 +2511,7 @@ void EjTextControl::worldLeft()
 
 void EjTextControl::worldRight()
 {
-	EjTableBlock *table = isTable(activeIndex);
+    EjTableBlock *table = isTable(activeIndex);
     if(table && m_statusMode == EDIT_TEXT)
         return;
     if(activeIndex < 0)
@@ -1676,7 +2529,7 @@ void EjTextControl::worldRight()
         activeIndex = doc->lBlocks->count() - 1;
     position = 0;
     if(doc->lBlocks->at(activeIndex)->type == TEXT)
-		position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
+        position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
 
 }
 
@@ -1700,8 +2553,9 @@ void EjTextControl::cursorUp()
     {
         x_s = m_upDown_x;
     }
+
     int index_string = getIndexString(activeIndex);
-    JString *cur_string = doc->lStrings->at(0);
+    EjString *cur_string = doc->lStrings->at(0);
     index_string--;
     if(index_string > -1)
         cur_string = doc->lStrings->at(index_string);
@@ -1730,15 +2584,16 @@ void EjTextControl::cursorDown()
         x_s = m_upDown_x;
     }
     int index_string = getIndexString(activeIndex);
-    JString *cur_string = doc->lStrings->at(index_string);
+    EjString *cur_string = doc->lStrings->at(index_string);
+
+    int delta = m_posCursorY - cur_string->y;
     index_string++;
     if(index_string < doc->lStrings->count())
         cur_string = doc->lStrings->at(index_string);
-    y_s = m_upDown_y =  cur_string->y; // + m_posCursorY
+    y_s = m_upDown_y =  cur_string->y;
 
     qDebug() << __FILE__ << __LINE__ << "m_posCursorY:" << m_posCursorY << "y_s:" << y_s;
     setCursor(x_s,y_s);
-
 }
 
 void EjTextControl::cursorFirst()
@@ -1758,7 +2613,7 @@ void EjTextControl::cursorLast()
 
 int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
 {
-	EjTextBlock *cur_txt = nullptr;
+    EjTextBlock *cur_txt = nullptr;
     int res = 0;
 
     if(text.contains(" "))
@@ -1774,7 +2629,7 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
         for(int i = 0; i < ltext.count(); i++)
         {
 
-			if(ltext[i].length() > 0)
+            if(ltext[i].count() > 0)
             {
                 if(i > 0)
                 {
@@ -1786,25 +2641,25 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
                 }
                 if(mode)
                 {
-					cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+                    cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
                     if(cur_txt->type != TEXT || i > 0)
                     {
                         activeIndex++;
-						doc->lBlocks->insert(activeIndex, new EjTextBlock());
-						cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+                        doc->lBlocks->insert(activeIndex, new EjTextBlock());
+                        cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
                     }
                     cur_txt->text = ltext[i];
                     cur_txt->flag_redraw = true;
                     position = cur_txt->text.length();
                     cur_txt->width = 0;
                 }
-				if(pos + ltext[i].length() >= preeditCursor && bSendCursor)
+                if(pos + ltext[i].count() >= preeditCursor && bSendCursor)
                 {
                     if(getBlocks()->at(activeIndex)->type == TEXT)
                     {
                         if(mode == true)
                             position = preeditCursor - pos;
-						EjTextBlock *block = dynamic_cast<EjTextBlock*>(getBlocks()->at(activeIndex));
+                        EjTextBlock *block = dynamic_cast<EjTextBlock*>(getBlocks()->at(activeIndex));
                         if(block && (block->text.length() < position ) && mode == true) //|| mode == false
                         {
                             position = block->text.length();
@@ -1816,7 +2671,7 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
                     }
                     bSendCursor = false;
                 }
-				pos += ltext[i].length();
+                pos += ltext[i].count();
             }
             else if(i > 0){
                 pos++;
@@ -1834,7 +2689,7 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
     }
     else if(text.contains("\n"))
     {
-		EjTableBlock *table = isTable(activeIndex);
+        EjTableBlock *table = isTable(activeIndex);
         if(!table || m_statusMode == EDIT_TEXT)
         {
             res = inputEnter();
@@ -1854,7 +2709,7 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
         {
             bool isInsert = false;
             if(activeIndex > -1)
-				cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+                cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
             if(mode != m_inputSelectMode)
                 isInsert = true;
             if(!cur_txt || cur_txt->type != TEXT)
@@ -1868,10 +2723,10 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
             }
             if(isInsert)
             {
-				doc->lBlocks->insert(activeIndex, new EjTextBlock());
+                doc->lBlocks->insert(activeIndex, new EjTextBlock());
                 id_inputSelBlock = activeIndex;
             }
-			cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+            cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
 
             cur_txt->text = text;
             cur_txt->flag_redraw = true;
@@ -1886,8 +2741,8 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
         while(activeIndex > 0 && (doc->lBlocks->at(activeIndex-1)->type == TEXT))
         {
             activeIndex--;
-			cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
-			cur_txt->text += static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex+1))->text;
+            cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+            cur_txt->text += static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex+1))->text;
             position = cur_txt->text.length();
             cur_txt->flag_redraw = true;
             cur_txt->width = 0;
@@ -1896,8 +2751,8 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
         }
         while(activeIndex < doc->lBlocks->count() - 1 && (doc->lBlocks->at(activeIndex+1)->type == TEXT))
         {
-			cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
-			cur_txt->text += static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex+1))->text;
+            cur_txt = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex));
+            cur_txt->text += static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex+1))->text;
             position = cur_txt->text.length();
             cur_txt->flag_redraw = true;
             cur_txt->width = 0;
@@ -1907,25 +2762,32 @@ int EjTextControl::setInputMode(bool mode, QString &text, int preeditCursor)
     }
     if(!mode)
         id_inputSelBlock = activeIndex;
+
     m_inputSelectMode = mode;
     calcInputMethodParams();
     return res;
 }
 
+
 void EjTextControl::setStatusMode(e_statusMode mode)
 {
-	EjTableBlock *table;
+    EjTableBlock *table;
+    EjTextBlock *cur_txtBlock;
+    QString str;
     bool bOk;
-	EjCellBlock *curCell = 0;
+    EjBlock *curBlock = 0;
+    EjCellBlock *curCell = 0;
     int k = activeIndex;
     int row;
     int colum;
+    double res, d;
     EjCalculator calculator(doc);
 
-    if(mode != READ_ONLY && !docPrev)
+    if(mode != READ_ONLY && !docPrev && doc != nullptr)
     {
-		docPrev = new EjDocument();
+        docPrev = new EjDocument();
         doc->copyData(docPrev);
+        createPatch();
     }
 
     table = isTable(activeIndex);
@@ -1933,12 +2795,13 @@ void EjTextControl::setStatusMode(e_statusMode mode)
     if(table)
     {
         cellParams(table,activeIndex,row,colum);
+        curBlock = doc->lBlocks->at(activeIndex);
         while(doc->lBlocks->at(k)->type != BASECELL && k > table->m_index)
             k--;
         if(k == table->m_index)
             return;
         if(k > -1)
-			curCell = (EjCellBlock*)doc->lBlocks->at(k);
+            curCell = (EjCellBlock*)doc->lBlocks->at(k);
     }
 
 
@@ -1946,43 +2809,50 @@ void EjTextControl::setStatusMode(e_statusMode mode)
     {
         //        QLocale locale;
         QString str = curCell->getText();
-		if(!str.isEmpty() && str.at(0).toLatin1() == '=' && (curCell->vid == EjCellBlock::CELL_AUTO
-							  || curCell->vid == EjCellBlock::CELL_FORMULA))
+        if(!str.isEmpty() && str.at(0).toLatin1() == '=' && (curCell->vid == EjCellBlock::CELL_AUTO
+                              || curCell->vid == EjCellBlock::CELL_FORMULA))
         {
             curCell->setFormula(str);
         }
-		else if(curCell->vid == EjCellBlock::CELL_AUTO
-				|| curCell->vid == EjCellBlock::CELL_FORMULA)
+        else if(curCell->vid == EjCellBlock::CELL_AUTO
+                || curCell->vid == EjCellBlock::CELL_FORMULA)
         {
             curCell->value = getDValue(str,&bOk);
             if(bOk)
                 curCell->text = getDText(curCell->value,12);
             else curCell->text.clear();
-			curCell->vid = EjCellBlock::CELL_AUTO;
+            curCell->vid = EjCellBlock::CELL_AUTO;
         }
         activeIndex = doc->lBlocks->indexOf(curCell);
 
-		if(colum == table->nColums() - 1 && row > 0 && row < table->nRows() - 1 && table->vid == EjTableBlock::SHOP_LIST)
+        if(colum == table->nColums() - 1 && row > 0 && row < table->nRows() - 1 && table->vid == EjTableBlock::SHOP_LIST)
         {
+
         }
+
+        position = 0;
+        updateTables(doc);
+        calcTables();
     }
     else   if(mode == EDIT_CELL && mode != m_statusMode && table && curCell)
     {
-		if(table->vid != EjTableBlock::SHOP_LIST)
+        if(table->vid != EjTableBlock::SHOP_LIST)
         {
             QString formula;
-			if(curCell->vid == EjCellBlock::CELL_FORMULA )
+            if(curCell->vid == EjCellBlock::CELL_FORMULA )
                 formula = curCell->formula();
-			if(curCell->vid == EjCellBlock::CELL_AUTO)
+            if(curCell->vid == EjCellBlock::CELL_AUTO)
                 formula = curCell->text;
             if(!formula.isEmpty())
                 curCell->setText(formula,this);
+
         }
         while(activeIndex < doc->lBlocks->count() - 1 && doc->lBlocks->at(activeIndex+1)->type != BASECELL && doc->lBlocks->at(activeIndex+1)->type != END_GROUP)
             activeIndex++;
         if(doc->lBlocks->at(activeIndex)->type == TEXT)
         {
-			position = ((EjTextBlock*)doc->lBlocks->at(activeIndex))->text.length();
+            position = ((EjTextBlock*)doc->lBlocks->at(activeIndex))->text.count();
+            //            position = curCell->text.count();
         }
         else
             position = 0;
@@ -2016,7 +2886,7 @@ QString EjTextControl::getText() const
     {
         switch (doc->lBlocks->at(i)->type) {
         case TEXT:
-			res += static_cast<EjTextBlock*>(doc->lBlocks->at(i))->text;
+            res += static_cast<EjTextBlock*>(doc->lBlocks->at(i))->text;
             break;
         case SPACE:
             res += ' ';
@@ -2036,6 +2906,7 @@ void EjTextControl::setText(const QString &source)
     m_startCursor = false;
     QString txt = source;
     QString left;
+
     int i  = txt.indexOf(' ');
     while(i > -1)
     {
@@ -2057,13 +2928,13 @@ void EjTextControl::setText(const QString &source)
 
 void EjTextControl::groupBlocksIndexes()
 {
-	EjBlock *curBlock;
+    EjBlock *curBlock;
 	for(int i = 0; i < doc->lBlocks->count(); i++)
 	{
 		curBlock = (*doc->lBlocks)[i];
 		if(curBlock->type >= GROUP_BLOCK)
 		{
-			dynamic_cast<EjGroupBlock*>(curBlock)->m_index = i;
+            dynamic_cast<EjGroupBlock*>(curBlock)->m_index = i;
 		}
 	}
 }
@@ -2071,16 +2942,16 @@ void EjTextControl::groupBlocksIndexes()
 void EjTextControl::setFirstTextStyle()
 {
 	int i = 0;
-	EjBlock *cur_block;
+    EjBlock *cur_block;
 	bool bFind = false;
 	while(i < doc->lBlocks->count())
 	{
 		cur_block = doc->lBlocks->at(i);
 		if(cur_block->type == NUM_STYLE)
 		{
-			if(((EjNumStyleBlock *)cur_block)->style)
+            if(((EjNumStyleBlock *)cur_block)->style)
 			{
-				if(((EjNumStyleBlock *)cur_block)->style->m_vid == TEXT_STYLE)
+                if(((EjNumStyleBlock *)cur_block)->style->m_vid == TEXT_STYLE)
 				{
 					bFind = true;
 					break;
@@ -2096,8 +2967,8 @@ void EjTextControl::setFirstTextStyle()
 	if(bFind)
 		return;
 
-	EjTextStyle *curTextStyle = getTextStyle(0);
-	EjNumStyleBlock *curNumStyle = new EjNumStyleBlock();
+    EjTextStyle *curTextStyle = getTextStyle(0);
+    EjNumStyleBlock *curNumStyle = new EjNumStyleBlock();
 	curNumStyle->num = doc->lStyles->indexOf(curTextStyle);
 	curNumStyle->style = curTextStyle;
 
@@ -2112,12 +2983,21 @@ void EjTextControl::setFirstTextStyle()
 
 void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoClose)
 {
+    //    EjBlock *curBlock;
+    if (doc == nullptr){
+        return;
+    }
     int index;
-	EjTextStyle *oldTextStyle;
-	EjTextStyle *curTextStyle;
+    //    int startIndex;
+    EjTextStyle *oldTextStyle;
+    EjTextStyle *curTextStyle;
     EjNumStyleBlock *curNumStyle;
-	EjTextStyle *newTextStyle = NULL;
-	EjTableBlock *table;
+    //    quint8 int_align = align | EjParagraphStyle::AlignBaseline;
+    EjTextStyle *newTextStyle = NULL;
+    EjTableBlock *table;
+    int type;
+    int count;
+    int max_count = -1;
     int endIndex;
 
 	if(activeIndex > 0)
@@ -2128,6 +3008,7 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
     if(m_startSelectBlock == -1 || m_endSelectBlock == -1)
     {
         endIndex = activeIndex;
+
         {
             if(autoClose)
             {
@@ -2147,7 +3028,9 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
                 }
                 endIndex = index;
             }
+
             index = activeIndex;
+
             if(isEndText(index))
             {
                 index++;
@@ -2156,15 +3039,16 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
             else if(activeIndex < endText(activeIndex))
                 index = startText(activeIndex);
             if(index == endIndex)
-				newTextStyle = dynamic_cast<EjTextStyle*>(getTextStyle(index - 1)->makeCopy());
+                newTextStyle = dynamic_cast<EjTextStyle*>(getTextStyle(index - 1)->makeCopy());
             else
-				newTextStyle = dynamic_cast<EjTextStyle*>(getTextStyle(index)->makeCopy());
+                newTextStyle = dynamic_cast<EjTextStyle*>(getTextStyle(index)->makeCopy());
             newTextStyle->normalizeStyle(textStyle, force);
             curTextStyle = doc->fromTextStyles(newTextStyle);
             curNumStyle = new EjNumStyleBlock();
             curNumStyle->num = doc->lStyles->indexOf(curTextStyle);
             curNumStyle->style = curTextStyle;
 
+            if (index == -1) index = 0;
             doc->lBlocks->insert(index,curNumStyle);
 
             table = isTable(index);
@@ -2212,6 +3096,7 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
             m_startSelectWidth = 0;
         }
         index = m_startSelectBlock;
+
 		while(index > 0)
 		{
 			if(doc->lBlocks->at(index)->type == TEXT)
@@ -2221,7 +3106,7 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
 		if(index > 0 && index < m_startSelectBlock)
 			index++;
 
-		newTextStyle = dynamic_cast<EjTextStyle*>(getTextStyle(index)->makeCopy());
+        newTextStyle = dynamic_cast<EjTextStyle*>(getTextStyle(index)->makeCopy());
         newTextStyle->normalizeStyle(textStyle, force);
         curTextStyle = doc->fromTextStyles(newTextStyle);
         curNumStyle = new EjNumStyleBlock();
@@ -2250,13 +3135,13 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
             curNumStyle = (EjNumStyleBlock*)doc->lBlocks->at(i);
             if(curNumStyle->style && curNumStyle->style->m_vid == TEXT_STYLE)
             {
-				curTextStyle = dynamic_cast<EjTextStyle*>(curNumStyle->style);
+                curTextStyle = dynamic_cast<EjTextStyle*>(curNumStyle->style);
                 if(curTextStyle)
                 {
                     bool isSame = false;
                     if(!force)
                     {
-						curTextStyle = dynamic_cast<EjTextStyle*>(curTextStyle->makeCopy());
+                        curTextStyle = dynamic_cast<EjTextStyle*>(curTextStyle->makeCopy());
                         curTextStyle->normalizeStyle(textStyle, false);
                         if(curTextStyle->fullCompare(oldTextStyle) == true)
                         {
@@ -2293,6 +3178,7 @@ void EjTextControl::setTextStyle(EjTextStyle *textStyle, bool force, bool autoCl
     }
 
     textStyleOptimize();
+    createPatch();
 }
 
 bool EjTextControl::textStyleOptimize()
@@ -2300,7 +3186,7 @@ bool EjTextControl::textStyleOptimize()
 
     bool res = false;
     EjNumStyleBlock *curNumStyle;
-	EjTableBlock *table;
+    EjTableBlock *table;
     bool textEnabled = false;
     int type;
     int start = doc->lBlocks->count() - 1;
@@ -2435,11 +3321,12 @@ void EjTextControl::setParagraphStyle(EjParagraphStyle *paragraphStyle)
     int startIndex;
     if(activeIndex > doc->lBlocks->count() - 1)
         activeIndex = doc->lBlocks->count() - 1;
-	EjBaseStyle *curStylePrg = NULL;
-	EjBaseStyle *oldStylePrg = getParagraphStyle(activeIndex);
+    EjBaseStyle *curStylePrg = NULL;
+    EjBaseStyle *oldStylePrg = getParagraphStyle(activeIndex);
     EjNumStyleBlock *curNumStyle;
-	EjBaseStyle *curStyle = NULL;
-	EjTableBlock *tableStart, *tableEnd, *table;
+    //    quint8 int_align = align | EjParagraphStyle::AlignBaseline;
+    EjBaseStyle *curStyle = NULL;
+    EjTableBlock *tableStart, *tableEnd, *table;
 
     if(activeIndex < 0)
         activeIndex = 0;
@@ -2538,6 +3425,8 @@ void EjTextControl::setParagraphStyle(EjParagraphStyle *paragraphStyle)
                 || doc->lBlocks->at(index)->type == e_typeBlocks::ENTER
                 || doc->lBlocks->at(index)->type == e_typeBlocks::BASECELL ) )
         index++;
+
+    if (index < 0) index = 0;
     curStylePrg = doc->fromParagraphStyles(paragraphStyle);
     curNumStyle = new EjNumStyleBlock();
     curNumStyle->num = doc->lStyles->indexOf(curStylePrg);
@@ -2549,13 +3438,18 @@ void EjTextControl::setParagraphStyle(EjParagraphStyle *paragraphStyle)
         table->m_counts++;
     }
     activeIndex++;
+
+    createPatch();
 }
 
 
 
 void EjTextControl::clear()
 {
-	doc->clear();
+    if (doc == nullptr){
+        return;
+    }
+    doc->clear();
     activeIndex = doc->lBlocks->count();
     position = 0;
     m_height = 0;
@@ -2574,16 +3468,21 @@ void EjTextControl::addTableString()
 
 void EjTextControl::addTableColum()
 {
+
+
 }
 
 void EjTextControl::delTableString(QList<EjBlock*> *l_blocks, int &active_block)
 {
-	EjCellBlock *curCell;
-	EjTableBlock *curTable = 0;
+    EjCellBlock *curCell;
+    EjTableBlock *curTable = 0;
+    TableFragment *curFragment;
     EjSizeProp *sizeProp;
     int row = 0;
     int colum = 0;
+    int frgs_row, frge_row;
     int d = 0;
+    //    int start;
     int index;
 
     if(active_block < 0 || active_block > l_blocks->count() - 2)
@@ -2592,13 +3491,17 @@ void EjTextControl::delTableString(QList<EjBlock*> *l_blocks, int &active_block)
     while(l_blocks->at(active_block)->type != BASECELL)
         active_block--;
 
-	curCell = (EjCellBlock*)l_blocks->at(active_block);
-	curTable = ((EjTableBlock*)(curCell->m_parent));
+    curCell = (EjCellBlock*)l_blocks->at(active_block);
+    curTable = ((EjTableBlock*)(curCell->parent));
+    //    else return;
+    //    curTable = isTable(activeBlock);
 
     if(curTable)
     {
-		if(curTable->vid == EjTableBlock::SHOP_LIST)
+        if(curTable->vid == EjTableBlock::SHOP_LIST)
             d = 1;
+        //        start = l_blocks->indexOf(curTable) + 1;
+        //       row = (active_block-start) / curTable->nColums();
         cellParams(curTable,active_block,row,colum, l_blocks);
 
         if(d && curTable->nRows() == 2)
@@ -2643,7 +3546,11 @@ void EjTextControl::delTableString(QList<EjBlock*> *l_blocks, int &active_block)
                 else
                     curTable->m_counts--;
             }
+            //            index = start+row*curTable->nColums();
+            //            curCell = static_cast<BaseCellBlock*>(l_blocks->takeAt(index));
+            //            delete curCell;
         }
+        //        active_block -= curTable->nColums();
         active_block = index;
         if(active_block < 0)
         {
@@ -2668,6 +3575,7 @@ void EjTextControl::delTableString(QList<EjBlock*> *l_blocks, int &active_block)
                 }
                 l_blocks->takeAt(curTable->startCell());
             }
+
             if(l_blocks == doc->lBlocks)
             {
                 activeIndex = curTable->m_index - 1;
@@ -2691,25 +3599,31 @@ void EjTextControl::delTableString(QList<EjBlock*> *l_blocks, int &active_block)
 
 void EjTextControl::delTableColum(QList<EjBlock *> *l_blocks, int &active_block)
 {
-	EjCellBlock *curCell;
-	EjTableBlock *curTable = 0;
-	EjTableBlock::ColumProp *columProp;
+    EjCellBlock *curCell;
+    EjTableBlock *curTable = 0;
+    TableFragment *curFragment;
+    EjSizeProp *sizeProp;
+    EjTableBlock::ColumProp *columProp;
     int row = 0;
     int colum = 0;
+    int frgs_colum, frge_colum;
+    int d = 0;
     int index;
 
     if(active_block < 0 || active_block > l_blocks->count() - 2)
         return;
+
     while(l_blocks->at(active_block)->type != BASECELL)
         active_block--;
 
-	curCell = (EjCellBlock*)l_blocks->at(active_block);
-	curTable = ((EjTableBlock*)(curCell->m_parent));
+    curCell = (EjCellBlock*)l_blocks->at(active_block);
+    curTable = ((EjTableBlock*)(curCell->parent));
 
     if(curTable)
     {
-		if(curTable->vid == EjTableBlock::SHOP_LIST)
+        if(curTable->vid == EjTableBlock::SHOP_LIST)
             return;
+
         cellParams(curTable,active_block,row,colum, l_blocks);
 
         active_block -= row;
@@ -2732,9 +3646,11 @@ void EjTextControl::delTableColum(QList<EjBlock *> *l_blocks, int &active_block)
                 else
                     curTable->m_counts--;
             }
+
         }
         columProp = curTable->lColums.takeLast();
         delete columProp;
+
         if(curTable->lColums.isEmpty() || curTable->lRows.isEmpty())
         {
             doc->lTables->removeOne(curTable);
@@ -2753,15 +3669,21 @@ void EjTextControl::delTableColum(QList<EjBlock *> *l_blocks, int &active_block)
 
         if(l_blocks == doc->lBlocks)
             calcTables();
+
+
     }
+
 }
 
 void EjTextControl::moveTableString(bool isUp)
 {
+
+
 }
 
 void EjTextControl::moveTableColum(bool isLeft)
 {
+
 
 }
 
@@ -2769,8 +3691,9 @@ void EjTextControl::updateFormulas(int fromVal, int toVal, bool isRow, bool isAd
 {
     return;
     QStringList list;
-	EjTableBlock *curTable2;
-	EjCellBlock *curCell;
+    EjTableBlock *curTable2;
+    EjCellBlock *curCell;
+    //    int start;
     int numRow;
     int numColum;
     int numTable;
@@ -2782,20 +3705,22 @@ void EjTextControl::updateFormulas(int fromVal, int toVal, bool isRow, bool isAd
     for(int i_table = 0; i_table < doc->lTables->count(); i_table++)
     {
         curTable2 = doc->lTables->at(i_table);
+        //        start = doc->lBlocks->indexOf(curTable2) + 1;
         for(int i_row = 0; i_row < curTable2->nRows(); i_row++)
         {
             for(int i_colum = 0; i_colum < curTable2->nColums(); i_colum++)
             {
+                //                index = start + i_row*curTable2->nColums() + i_colum;
                 index = tableCellIndex(curTable2,i_row,i_colum,doc->lBlocks);
                 if(index < 0)
                     continue;
-				curCell = static_cast<EjCellBlock*>(doc->lBlocks->at(index));
-				if(curCell->vid == EjCellBlock::CELL_FORMULA)
+                curCell = static_cast<EjCellBlock*>(doc->lBlocks->at(index));
+                if(curCell->vid == EjCellBlock::CELL_FORMULA)
                 {
                     list.clear();
                     txt.clear();
                     QString formula = curCell->formula();
-					for(int i = 0; i < formula.length(); i++)
+                    for(int i = 0; i < formula.count(); i++)
                     {
 
                         if(calculator.is_split(formula[i].toLatin1()) )
@@ -2817,6 +3742,7 @@ void EjTextControl::updateFormulas(int fromVal, int toVal, bool isRow, bool isAd
                         if(txt == "SUMM" || txt == "MAX" || txt == "MIN")
                             continue;
                         isFormula = tableLinkParams(txt, curTable, curTable2, numTable, numRow, numColum);
+
                         if(isFormula && numTable == curTable->key)
                         {
                             if(isMove)
@@ -2882,7 +3808,7 @@ void EjTextControl::updateFormulas(int fromVal, int toVal, bool isRow, bool isAd
                             txt = "";
                             if(curTable2 != curTable)
                                 txt += QString::number(numTable);
-							txt += QString::number(numColum) + 'A';
+                            txt += (QString::number(numColum) + 'A');
                             txt += QString::number(numRow);
                             list[i2] = txt;
                         }
@@ -2905,22 +3831,23 @@ void EjTextControl::updateFormulas(int fromVal, int toVal, bool isRow, bool isAd
 bool EjTextControl::tableLinkParams(QString txt, EjTableBlock *curTable, EjTableBlock *curTable2, int &numTable, int &numRow, int &numColum)
 {
     bool isFormula = true;
-	if(txt.length() > 1 && curTable == curTable2 && is_value(txt.toLatin1().at(0)))
+
+    if(txt.count() > 1 && curTable == curTable2 && is_value(txt.toLatin1().at(0)))
     {
         numTable = curTable->key;
-		numRow = txt.right(txt.length()-1).toInt();
+        numRow = txt.right(txt.count()-1).toInt();
         numColum = txt.toLatin1().at(0) - 'A';
     }
-	else if(txt.length() > 2 && is_value(txt.toLatin1().at(1)))
+    else if(txt.count() > 2 && is_value(txt.toLatin1().at(1)))
     {
         numTable = txt.left(1).toInt();
-		numRow = txt.right(txt.length()-2).toInt();
+        numRow = txt.right(txt.count()-2).toInt();
         numColum = txt.toLatin1().at(1) - 'A';
     }
-	else if(txt.length() > 3 && is_value(txt.toLatin1().at(2)))
+    else if(txt.count() > 3 && is_value(txt.toLatin1().at(2)))
     {
         numTable = txt.left(2).toInt();
-		numRow = txt.right(txt.length()-3).toInt();
+        numRow = txt.right(txt.count()-3).toInt();
         numColum = txt.toLatin1().at(2) - 'A';
     }
     else
@@ -2938,101 +3865,103 @@ bool EjTextControl::tableLinkParams(QString txt, EjTableBlock *curTable, EjTable
 void EjTextControl::updateShopList(EjTableBlock *curTableBlock)
 {
     int index = curTableBlock->startCell();
-	EjCellBlock *curCell;
+    EjCellBlock *curCell;
+
+
     while(doc->lBlocks->at(index)->type != BASECELL)
         index++;
     index--;
     for(int row = 0; row < curTableBlock->nRows() - 1; row++)
     {
         index++;
+
         if(row > 0)
         {
-			curCell = (EjCellBlock*)doc->lBlocks->at(index);
+            curCell = (EjCellBlock*)doc->lBlocks->at(index);
             curCell->value = row;
-			curCell->vid = EjCellBlock::CELL_NUMBER;
+            curCell->vid = EjCellBlock::CELL_NUMBER;
         }
         index++;
         while(doc->lBlocks->at(index+1)->type != BASECELL)
             index++;
         if(row > 0)
         {
-			curCell = (EjCellBlock*)doc->lBlocks->at(index);
-			curCell->vid = EjCellBlock::CELL_CHECK;
+            curCell = (EjCellBlock*)doc->lBlocks->at(index);
+            curCell->vid = EjCellBlock::CELL_CHECK;
         }
-        // name
         index++;
         while(doc->lBlocks->at(index+1)->type != BASECELL)
             index++;
-        // price
         index++;
         while(doc->lBlocks->at(index+1)->type != BASECELL)
             index++;
         if(row > 0)
         {
-			curCell = (EjCellBlock*)doc->lBlocks->at(index);
-			if(curCell->vid != EjCellBlock::CELL_NUMBER)
+            curCell = (EjCellBlock*)doc->lBlocks->at(index);
+            if(curCell->vid != EjCellBlock::CELL_NUMBER)
             {
-				curCell->vid = EjCellBlock::CELL_NUMBER;
+                curCell->vid = EjCellBlock::CELL_NUMBER;
                 curCell->setText("0");
                 curCell->value = 0;
             }
         }
-        // qty
         index++;
         while(doc->lBlocks->at(index+1)->type != BASECELL)
             index++;
         if(row > 0)
         {
-			curCell = (EjCellBlock*)doc->lBlocks->at(index);
-			if(curCell->vid != EjCellBlock::CELL_NUMBER)
+            curCell = (EjCellBlock*)doc->lBlocks->at(index);
+            if(curCell->vid != EjCellBlock::CELL_NUMBER)
             {
-				curCell->vid = EjCellBlock::CELL_NUMBER;
+                curCell->vid = EjCellBlock::CELL_NUMBER;
                 curCell->setText("1");
                 curCell->value = 1;
             }
         }
 
-
         index++;
         while(doc->lBlocks->at(index+1)->type != BASECELL)
             index++;
-        //        index++;
         if(row > 0)
         {
-			curCell = (EjCellBlock*)doc->lBlocks->at(index);
+            curCell = (EjCellBlock*)doc->lBlocks->at(index);
             curCell->setFormula(QString("=D%1*E%1").arg(row+1));
-			curCell->vid = EjCellBlock::CELL_FORMULA;
+            curCell->vid = EjCellBlock::CELL_FORMULA;
         }
 
     }
+
     index = tableCellIndex(curTableBlock,curTableBlock->nRows()-1,curTableBlock->nColums()-1, doc->lBlocks);
     curCell = NULL;
     if(index > -1)
-		curCell = (EjCellBlock*)doc->lBlocks->at(index);
+        curCell = (EjCellBlock*)doc->lBlocks->at(index);
     if(curCell)
     {
         curCell->setFormula(QString("=SUMM(F2:F%1)").arg(curTableBlock->nRows()-1));
-		curCell->vid = EjCellBlock::CELL_FORMULA;
+        curCell->vid = EjCellBlock::CELL_FORMULA;
     }
+
 }
 
-void EjTextControl::cellParams(EjTableBlock *TableBlock, int index, int &row, int &colum, QList<EjBlock *> *l_blocks)
+void EjTextControl::cellParams(EjTableBlock *EjTableBlock, int index, int &row, int &colum, QList<EjBlock *> *l_blocks)
 {
     int table_index = -1;
     if(!l_blocks)
         l_blocks = doc->lBlocks;
-    for(int i = TableBlock->startCell(); i <= TableBlock->endBlock(); i++ )
+    for(int i = EjTableBlock->startCell(); i <= EjTableBlock->endBlock(); i++ )
     {
         if(l_blocks->at(i)->type == BASECELL)
             table_index++;
         if(i == index)
         {
-            if(TableBlock->nColums() > 0)
-                row = (table_index) / TableBlock->nColums();
-            colum = table_index - row*TableBlock->nColums();
+            if(EjTableBlock->nColums() > 0)
+                row = (table_index) / EjTableBlock->nColums();
+            colum = table_index - row*EjTableBlock->nColums();
             break;
         }
     }
+
+
 }
 
 void EjTextControl::cellParams(EjTableBlock *tableBlock, EjBlock *block, int &row, int &colum, QList<EjBlock *> *l_blocks)
@@ -3060,11 +3989,13 @@ void EjTextControl::cellParams(EjTableBlock *tableBlock, EjBlock *block, int &ro
 int EjTextControl::tableCellIndex(EjTableBlock *tableBlock, int row, int colum, QList<EjBlock *> *l_blocks)
 {
     int table_index = -1;
+    //    int cur_row, cur_colum;
     int res = -1;
     int index = row * tableBlock->nColums() + colum;
 
     if(!l_blocks)
         return res;
+//        l_blocks = doc->lBlocks;
     int i = tableBlock->startCell();
     while(l_blocks->at(i)->type != BASECELL)
         i++;
@@ -3073,6 +4004,11 @@ int EjTextControl::tableCellIndex(EjTableBlock *tableBlock, int row, int colum, 
         if(l_blocks->at(i)->type == BASECELL)
         {
             table_index++;
+            //            cur_row = 0;
+            //            if(tableBlock->nColums() > 0)
+            //                cur_row = (table_index) / tableBlock->nColums();
+            //            cur_colum = table_index - cur_row*tableBlock->nColums();
+            //            if(row == cur_row && colum == cur_colum)
             if(table_index >= index)
             {
                 res = i;
@@ -3086,14 +4022,17 @@ int EjTextControl::tableCellIndex(EjTableBlock *tableBlock, int row, int colum, 
 
 void EjTextControl::updateTables(EjDocument *fdoc)
 {
-	EjCalcParams calcParams;
-	EjTableBlock *curTable = 0;
-	EjPropIntBlock *propInt;
+    EjCalcParams calcParams;
+//    calcParams.control = this;
+    EjTableBlock *curTable = 0;
+    EjPropIntBlock *propInt;
     EjBlock *curBlock;
-	EjCellBlock *curCell;
+    EjCellBlock *curCell;
     QString text;
     bool bOk;
 
+//    if(doc->lStrings->isEmpty())
+//        doc->lStrings->append(new EjString());
     fdoc->lTables->clear();
     fdoc->lLabels_bak->clear();
     fdoc->lLabels->clear();
@@ -3102,44 +4041,51 @@ void EjTextControl::updateTables(EjDocument *fdoc)
         curBlock = fdoc->lBlocks->at(i);
         if(curBlock->type == EXT_TABLE)
         {
+//            calcParams.textStyle = getTextStyle(i);
+//            calcParams.paragraphStyle = getParagraphStyle(i);
 
-			curTable = dynamic_cast<EjTableBlock*>(curBlock);
+            curTable = dynamic_cast<EjTableBlock*>(curBlock);
             curTable->m_index = i;
             curTable->m_doc = fdoc;
             if(i < fdoc->lBlocks->count() - 1)
                 i++;
             else
                 break;
+//            curTable->calcBlock(i,&calcParams);
             fdoc->lTables->append(curTable);
             while(i < fdoc->lBlocks->count() - 1 && curBlock->type != BASECELL && curBlock->type != END_GROUP) {
                 curBlock = fdoc->lBlocks->at(i);
-				curBlock->m_parent = curTable;
+                curBlock->parent = curTable;
                 if(curBlock->type == PROP_INT) {
-					propInt = dynamic_cast<EjPropIntBlock*>(curBlock);
-					if(propInt->num == EjTableBlock::TBL_ROWS)
+                    propInt = dynamic_cast<EjPropIntBlock*>(curBlock);
+                    if(propInt->num == EjTableBlock::TBL_ROWS)
                     {
                         while(curTable->lRows.count() > propInt->value)
                             delete curTable->lRows.takeLast();
                         while(curTable->lRows.count() < propInt->value)
                             curTable->lRows.append(new EjSizeProp());
                     }
-					if(propInt->num == EjTableBlock::TBL_COLUMS)
+                    if(propInt->num == EjTableBlock::TBL_COLUMS)
                     {
                         while(curTable->lColums.count() > propInt->value)
                             delete curTable->lColums.takeLast();
                         while(curTable->lColums.count() < propInt->value)
-							curTable->lColums.append(new EjTableBlock::ColumProp());
+                            curTable->lColums.append(new EjTableBlock::ColumProp());
                     }
                 }
                 if(curBlock->type == PROP_PNT) {
-					EjPropPntBlock *propPnt = dynamic_cast<EjPropPntBlock*>(curBlock);
+                    EjPropPntBlock *propPnt = dynamic_cast<EjPropPntBlock*>(curBlock);
                     if(propPnt && propPnt->y_value < curTable->lColums.count())
                     {
-						if(propPnt->num == EjTableBlock::TBL_COLUM_MAX_WIDTH)
+                        if(propPnt->num == EjTableBlock::TBL_COLUM_MAX_WIDTH)
                             curTable->lColums.at(propPnt->y_value)->sizeProp.max = propPnt->x_value;
-						if(propPnt->num == EjTableBlock::TBL_COLUM_MIN_WIDTH)
+                        if(propPnt->num == EjTableBlock::TBL_COLUM_MIN_WIDTH)
                             curTable->lColums.at(propPnt->y_value)->sizeProp.min = propPnt->x_value;
                     }
+//                    if(propPnt && propPnt->num == EjTableBlock::TBL_COLUM_MAX_WIDTH && propPnt->y < curTable->lColums.count())
+//                    {
+//                        curTable->lColums.at(propPnt->y)->sizeProp.max = static_cast<quint16>(propPnt->x);
+//                    }
                 }
 
                 i++;
@@ -3149,7 +4095,7 @@ void EjTextControl::updateTables(EjDocument *fdoc)
             curBlock = fdoc->lBlocks->at(i);
             while(i < fdoc->lBlocks->count() - 1 && curBlock->type != END_GROUP) {
                 curBlock = fdoc->lBlocks->at(i);
-				curBlock->m_parent = curTable;
+                curBlock->parent = curTable;
                 if(curBlock->type >= GROUP_BLOCK)
                 {
                     EjGroupBlock *groupBlock = dynamic_cast<EjGroupBlock*>(curBlock);
@@ -3161,12 +4107,12 @@ void EjTextControl::updateTables(EjDocument *fdoc)
                 }
                 if(curBlock->type == BASECELL)
                 {
-					curCell = dynamic_cast<EjCellBlock*>(curBlock);
-					if(curCell->vid == EjCellBlock::CELL_AUTO || curCell->vid == EjCellBlock::CELL_NUMBER)
+                    curCell = dynamic_cast<EjCellBlock*>(curBlock);
+                    if(curCell->vid == EjCellBlock::CELL_AUTO || curCell->vid == EjCellBlock::CELL_NUMBER)
                     {
                         if(!curCell->text.isEmpty() && curCell->text.at(0).toLatin1() != '=')
                             curCell->value = getDValue(curCell->text, &bOk);
-						else if(curCell->vid == EjCellBlock::CELL_AUTO)
+                        else if(curCell->vid == EjCellBlock::CELL_AUTO)
                         {
                             text = curCell->getText();
                             curCell->value = getDValue(text, &bOk);
@@ -3189,12 +4135,169 @@ void EjTextControl::updateTables(EjDocument *fdoc)
             fdoc->lLabels->append(label);
         }
     }
+//    doc->lTables->clear();
+//    doc->lFragments.clear();
+//    EjFragmentBlock *curFragment;
+//    EjTableBlock *curTable = 0;
+//    BaseCellBlock *curCell;
+//    int startTable;
+//    for(int i = 0; i < doc->lBlocks->count(); i++)
+//    {
+//        if(doc->lBlocks->at(i)->type == FRAGMENT)
+//        {
+//            curFragment = (EjFragmentBlock*)doc->lBlocks->at(i);
+//            curFragment->startBlock = i;
+//            curFragment->endBlock = i + curFragment->countBlocks;
+//            doc->lFragments.append(curFragment);
+//        }
+//        else if(doc->lBlocks->at(i)->type == EXT_TABLE)
+//        {
+//            if(i==0 || (i>0 && doc->lBlocks->at(i-1)->type != ENTER) || (i>1 && doc->lBlocks->at(i-2)->type == BASECELL) )
+//            {
+//                doc->lBlocks->insert(i,new EjBlock(ENTER));
+//                updateFragments(i,true);
+//                i++;
+//            }
+//            curTable = (EjTableBlock*)doc->lBlocks->at(i);
+//            doc->lTables->append(curTable);
+////            startTable = i;
+////            curTable->startBlock = i;
+//            while(doc->lBlocks->at(i+1)->type != BASECELL)
+//                i++;
+//            for(int row = 0; row < curTable->nRows(); row++)
+//            {
+//                for(int colum = 0; colum < curTable->nColums(); colum++)
+//                {
+//                    i++;
+////                    if(doc->lBlocks->at(i)->type == FRAGMENT)
+////                    {
+////                        curFragment = (EjFragmentBlock*)doc->lBlocks->at(i);
+////                        curFragment->startBlock = i;
+////                        curFragment->endBlock = i + curFragment->countBlocks;
+////                        doc->lFragments.append(curFragment);
+////                    }
+////                    else
+//                    if(doc->lBlocks->at(i)->type == BASECELL)
+//                    {
+//                        curCell = (BaseCellBlock*)doc->lBlocks->at(i);
+//                        curCell->parent = curTable;
+//                        if(curCell->vid == BaseCellBlock::NUMBER)
+//                            curCell->text = getDText(curCell->value, curCell->parent->accuracy);
+
+//                        if(i > doc->lBlocks->count() - 2 || doc->lBlocks->at(i+1)->type == EXT_TABLE)
+//                        {
+//                            curCell = new BaseCellBlock();
+//                            curCell->vid = BaseCellBlock::ENDTABLE;
+//                            doc->lBlocks->insert(i + 1, curCell);
+//                            updateFragments(i + 1,true);
+//                        }
+//                        while(doc->lBlocks->at(i + 1)->type != BASECELL)
+//                        {
+//                            i++;
+////                            if(doc->lBlocks->at(i)->type == FRAGMENT)
+////                            {
+////                                curFragment = (EjFragmentBlock*)doc->lBlocks->at(i);
+////                                curFragment->startBlock = i;
+////                                curFragment->endBlock = i + curFragment->countBlocks;
+////                                doc->lFragments.append(curFragment);
+////                            }
+////                            else
+////                            if(i > doc->lBlocks->count() - 2 || doc->lBlocks->at(i + 1)->type == EXT_TABLE)
+////                            {
+////                                curCell = new BaseCellBlock();
+////                                curCell->vid = BaseCellBlock::ENDTABLE;
+////                                doc->lBlocks->insert(i + 1, curCell);
+//////                                updateFragments(i+1,true);
+////                                break;
+////                            }
+//                        }
+//                    }
+//                }
+//            }
+//            i++;
+//            if(doc->lBlocks->at(i)->type == BASECELL)
+//            {
+//                curCell = (BaseCellBlock*)doc->lBlocks->at(i);
+//                curCell->parent = curTable;
+//            }
+////            curTable->endBlock() = i;
+////            curTable->countBlocks = curTable->endBlock - curTable->startBlock;
+//            //            if(i < doc->lBlocks->count() && doc->lBlocks->at(i)->type != BASECELL)
+//            //            {
+//            //                curCell = new BaseCellBlock();
+//            //                curCell->vid = BaseCellBlock::ENDTABLE;
+//            //                doc->lBlocks->insert(i, curCell);
+//            //                updateFragments(i,true);
+//            //            }
+//            if(i >= doc->lBlocks->count() - 1 || (i < doc->lBlocks->count()-1 && doc->lBlocks->at(i+1)->type != ENTER))
+//            {
+//                doc->lBlocks->insert(i+1,new EjBlock(ENTER));
+//                updateFragments(i+1,true);
+//            }
+//            if(curTable->vid == EjTableBlock::SHOPLIST)
+//                updateShopList(curTable);
+//        }
+//        //        if(doc->lBlocks->at(i)->type == BASECELL)
+//        //        {
+//        //            ((BaseCellBlock*)doc->lBlocks->at(i))->parent = curTable;
+//        //        }
+
+//    }
+//    //    for(int i = 0; i < doc->lTables->count(); i++)
+//    //    {
+//    //        lastTable = (EjTableBlock*)doc->lBlocks->at(i);
+//    //        if(lastTable->vid == EjTableBlock::SHOPLIST)
+
+//    //    }
 }
+
+//void EjTextControl::updateFragments(int index, bool isAdd)
+//{
+//    foreach(EjTableBlock *curTable, *doc->lTables)
+//    {
+//        if(index > curTable->startBlock && index <= curTable->endBlock)
+//        {
+//            if(!isAdd)
+//            {
+//                curTable->endBlock--;
+//                curTable->countBlocks--;
+//            }
+//            else
+//            {
+//                curTable->endBlock++;
+//                curTable->countBlocks++;
+//            }
+
+//        }
+//        else if(index <= curTable->startBlock)
+//        {
+//            if(!isAdd)
+//            {
+//                if(index < curTable->startBlock)
+//                    curTable->startBlock--;
+//                curTable->endBlock--;
+//            }
+//            else
+//            {
+//                curTable->endBlock++;
+//                curTable->startBlock++;
+
+//            }
+//        }
+//    }
+//    updateFragments(index,isAdd);
+
+
+//}
 
 EjTableBlock *EjTextControl::isTable(int index)
 {
-	EjTableBlock *res = 0;
-	foreach(EjTableBlock *curTable, *doc->lTables)
+    EjTableBlock *res = 0;
+    //    bool res = false;
+    if (doc == nullptr){
+        return nullptr;
+    }
+    foreach(EjTableBlock *curTable, *doc->lTables)
     {
         if(index >= curTable->m_index && index <= curTable->endBlock())
         {
@@ -3209,7 +4312,7 @@ void EjTextControl::checkFormula()
 {
     if(activeIndex < 0 || doc->lBlocks->at(activeIndex)->type != BASECELL)
         return;
-	EjCellBlock *curCell = dynamic_cast<EjCellBlock*>(doc->lBlocks->at(activeIndex));
+    EjCellBlock *curCell = dynamic_cast<EjCellBlock*>(doc->lBlocks->at(activeIndex));
     QString text = curCell->getText();
     if(text.isEmpty())
     {
@@ -3228,10 +4331,11 @@ bool EjTextControl::isNumber()
 {
     if(activeIndex < 0 || doc->lBlocks->at(activeIndex)->type != BASECELL)
         return false;
-	EjCellBlock *curBlock = (EjCellBlock*)doc->lBlocks->at(activeIndex);
-	if(((EjTableBlock*)(curBlock->m_parent))->vid == EjTableBlock::SHOP_LIST)
+    EjCellBlock *curBlock = (EjCellBlock*)doc->lBlocks->at(activeIndex);
+    if(((EjTableBlock*)(curBlock->parent))->vid == EjTableBlock::SHOP_LIST)
     {
-		EjTableBlock *curTable = (EjTableBlock*)curBlock->m_parent;
+        EjTableBlock *curTable = (EjTableBlock*)curBlock->parent;
+        //        int index = doc->lBlocks->indexOf(curTable) + 1;
         int row;   // = (activeBlock - index) / curTable->nColums();
         int colum; // = activeBlock - index - row * curTable->nColums();
         cellParams(curTable,activeIndex,row,colum);
@@ -3253,8 +4357,8 @@ bool EjTextControl::isCellEditFormula()
 {
     if(activeIndex < 0 || doc->lBlocks->at(activeIndex)->type != BASECELL)
         return false;
-	EjCellBlock *curBlock = (EjCellBlock*)doc->lBlocks->at(activeIndex);
-	if(((EjTableBlock*)(curBlock->m_parent))->vid != EjTableBlock::SHOP_LIST && curBlock->vid == EjCellBlock::CELL_FORMULA)
+    EjCellBlock *curBlock = (EjCellBlock*)doc->lBlocks->at(activeIndex);
+    if(((EjTableBlock*)(curBlock->parent))->vid != EjTableBlock::SHOP_LIST && curBlock->vid == EjCellBlock::CELL_FORMULA)
         return true;
     return false;
 
@@ -3267,12 +4371,22 @@ bool EjTextControl::isCellSelected(int index)
     int row_start, colum_start;
     int row_end, colum_end;
     int n;
-	EjTableBlock *startTable;
-	EjTableBlock *endTable;
+    EjTableBlock *startTable;
+    EjTableBlock *endTable;
     startTable = isTable(m_startSelectBlock);
     endTable = isTable(m_endSelectBlock);
+    //        if(doc->lBlocks->at(m_startSelectBlock)->type == BASECELL && doc->lBlocks->at(m_endSelectBlock)->type == BASECELL)
     if(startTable && endTable && startTable == endTable)
     {
+        //            BaseCellBlock *curBlockStart;
+        //            BaseCellBlock *curBlockEnd;
+        //            curBlockStart = (BaseCellBlock*)doc->lBlocks->at(m_startSelectBlock);
+        //            curBlockEnd = (BaseCellBlock*)doc->lBlocks->at(m_endSelectBlock);
+        //            if(curBlockStart->parent == curBlockEnd->parent)
+        //            {
+        //                getBaseCellParams(index, row_index, colum_index);
+        //                getBaseCellParams(m_startSelectBlock, row_start, colum_start);
+        //                getBaseCellParams(m_endSelectBlock, row_end, colum_end);
         cellParams(startTable, index, row_index, colum_index);
         cellParams(startTable, m_startSelectBlock, row_start, colum_start);
         cellParams(startTable, m_endSelectBlock, row_end, colum_end);
@@ -3291,21 +4405,37 @@ bool EjTextControl::isCellSelected(int index)
         if( row_index >= row_start && row_index <= row_end
                 && colum_index >= colum_start && colum_index <= colum_end)
             res = true;
+        //            }
+        //            else
+        //                res = true;
     }
     else  if(index >= m_startSelectBlock && index <= m_endSelectBlock)
         res = true;
+    //        res = true;
     return res;
 }
 
 bool EjTextControl::getBaseCellParams(int index, int &row, int &colum)
 {
     bool res = false;
-	EjTableBlock *curTable = isTable(index);
+    EjTableBlock *curTable = isTable(index);
     if(curTable)
     {
         cellParams(curTable,index,row,colum);
         res = true;
     }
+
+    //    if(index < 0 || !(doc->lBlocks->at(index)->type == BASECELL) )
+    //            return false;
+    //    BaseCellBlock *curBlock = (BaseCellBlock *)doc->lBlocks->at(index);
+    //   EjTableBlock *curTable = curBlock->parent;
+    //   if(curTable)
+    //   {
+    //      int start = doc->lBlocks->indexOf(curTable) + 1;
+    //      row = (index - start) / curTable->nColums();
+    //      colum = index - start - row*curTable->nColums();
+    //      res = true;
+    //   }
     return res;
 }
 
@@ -3326,42 +4456,327 @@ int EjTextControl::getIndexString(int index)
 int EjTextControl::tableVid()
 {
     int res = -1;
-	EjTableBlock *table = isTable(activeIndex);
+    EjTableBlock *table = isTable(activeIndex);
     if(table)
         res = table->vid;
     return res;
+    //    if(activeBlock < 0 || doc->lBlocks->at(activeBlock)->type != BASECELL)
+    //        return -1;
+    //    BaseCellBlock *curBlock = (BaseCellBlock*)doc->lBlocks->at(activeBlock);
+    //    return curBlock->parent->vid;
 }
 
 void EjTextControl::loadLinks()
 {
+    quint32 lastOffset;
+    qint16 lastKey;
+    quint16 lastVer;
+    EjLinkProp *curLink;
+
+    if(!doc->m_attrProp)
+        return;
+    for(int i = 0; i < doc->m_attrProp->m_lLinks.count(); i++) {
+        curLink = doc->m_attrProp->m_lLinks.at(i);
+  //      if(i == 0)
+  //      {
+  //          curLink->m_doc = this->doc;
+  //      }
+  //      else
+        {
+            if(!curLink->m_extDoc)
+                curLink->m_extDoc = new EjDocument(curLink->keyUuid());
+         }
+    }
 }
 
 void EjTextControl::signLinks(qint32 sign_id,qint32 group_id, int status, QString comment)
 {
+    quint32 lastOffset;
+    qint16 lastKey;
+    quint16 lastVer;
+    EjLinkProp *curLink;
+    bool usl;
+
+    if(!doc->m_attrProp)
+        return;
+    for(int i = 0; i < doc->m_attrProp->m_lLinks.count(); i++) {
+        curLink = doc->m_attrProp->m_lLinks.at(i);
+  //      if(i == 0)
+  //      {
+  //          curLink->m_doc = this->doc;
+  //      }
+  //      else
+        {
+            if(!curLink->m_extDoc)
+                curLink->m_extDoc = new EjDocument(curLink->keyUuid());
+        }
+    }
+
 }
 
 void EjTextControl::updateLinks()
 {
+//  Task task;
+//  quint32 lastOffset;
+//  qint16 lastKey;
+//  quint16 lastVer;
   EjLinkProp *curLink;
+//  PropsDoc::Link *curLink;
   EjCalculator calculator(doc);
 
+//  delete task.m_doc;
+//  task.m_doc = NULL;
+
+//  PropsDoc *propDoc = doc->getPropDoc();
   if(!doc->m_attrProp)
       return;
   for(int i = 0; i < doc->m_attrProp->m_lLinks.count(); i++) {
       curLink = doc->m_attrProp->m_lLinks.at(i);
+//      if(i == 0)
+//      {
+//          curLink->m_doc = this->doc;
+//      }
+//      else
+//      {
+//          if(!curLink->m_extDoc)
+//              curLink->m_extDoc = new EjDocument(curLink->keyUuid());
+//          task.key = curLink->keyUuid();
+//          task.m_doc = curLink->m_extDoc;
+//          if(ext_storage->getId(&task))
+//          {
+//              task.getTask();
+//              ext_storage->loadTasksBody(&task, lastOffset, lastKey, lastVer);
+//          }
+//          task.m_doc = NULL;
+//      }
       if(curLink->m_extDoc)
           updateTables(curLink->m_extDoc);
+//      calculator.m_doc = curLink->m_extDoc;
+//      calculator.updateFormulas(true);
   }
   calculator.calcTables(true);
+//  propDoc = doc->getPropDoc();
   calculator.m_doc = doc;
   calculator.updateFormulas(true);
 
+}
+
+void EjTextControl::createPatch()
+{
+    if(!doc || !m_createPatchEnabled)
+        return;
+    if(!docPrev)
+    {
+//        docPrev = new EjDocument();
+//        doc->copy(docPrev);
+    }
+    else
+    {
+        while(m_currentPatch < m_lPatches.count() - 1)
+            delete m_lPatches.takeLast();
+
+        PatchUndoRedo *patch = new PatchUndoRedo();
+        patch->m_body = diff(*docPrev->lBlocks,*doc->lBlocks,true);
+        if(patch->m_body.count() < 3)
+            patch->m_body.clear();
+        patch->m_attributes = diff(*docPrev->lPropBlocks,*doc->lPropBlocks,true);
+        if(patch->m_attributes.count() < 3)
+            patch->m_attributes.clear();
+        if(!patch->m_body.isEmpty() || !patch->m_attributes.isEmpty())
+        {
+            patch->m_activeIndex = activeIndex;
+            patch->m_position = position;
+            patch->m_startSelectBlock = m_startSelectBlock;
+            patch->m_startSelectPos = m_startSelectPos;
+            patch->m_startSelectWidth = m_startSelectWidth;
+            patch->m_endSelectBlock = m_endSelectBlock;
+            patch->m_endSelectPos = m_endSelectPos;
+            patch->m_endSelectWidth = m_endSelectWidth;
+            patch->m_selectMode = m_selectMode;
+
+            m_lPatches.append(patch);
+            doc->copyData(docPrev);
+        }
+        else{
+            delete patch;
+        }
+        m_currentPatch = m_lPatches.count() - 1;
+    }
+}
+
+void EjTextControl::undo()
+{
+    bool isError;
+    QList<EjBlock*> unused;
+    if(m_currentPatch == m_lPatches.count() - 1)
+        createPatch();
+   if(m_currentPatch > -1)
+   {
+       PatchUndoRedo *patch = m_lPatches[m_currentPatch];
+       if(!patch->m_body.isEmpty())
+       {
+           isError = false;
+           try {
+               *doc->lBlocks  = patch2(*doc->lBlocks, unused, patch->m_body, true);
+           }
+           catch(...)
+           {
+               isError = true;
+               qDebug() << "Error for load " << __FILE__ << __LINE__ ;
+
+//                break;
+           }
+           if(!isError)
+               qDeleteAll(unused);
+           unused.clear();
+       }
+       if(!patch->m_attributes.isEmpty())
+       {
+           isError = false;
+           try {
+               *doc->lPropBlocks  = patch2(*doc->lPropBlocks, unused, patch->m_attributes, true);
+               doc->m_attrProp = nullptr;
+           }
+           catch(...)
+           {
+               isError = true;
+               qDebug() << "Error for load " << __FILE__ << __LINE__ ;
+           }
+           if(!isError)
+               qDeleteAll(unused);
+           unused.clear();
+       }
+       if(!patch->m_body.isEmpty() || !patch->m_attributes.isEmpty())
+       {
+           activeIndex = patch->m_activeIndex;
+           position = patch->m_position;
+           if(m_currentPatch > 0)
+           {
+               patch = m_lPatches[m_currentPatch - 1];
+               m_startSelectBlock = patch->m_startSelectBlock;
+               m_startSelectPos = patch->m_startSelectPos;
+               m_startSelectWidth = patch->m_startSelectWidth;
+               m_endSelectBlock = patch->m_endSelectBlock;
+               m_endSelectPos = patch->m_endSelectPos;
+               m_endSelectWidth = patch->m_endSelectWidth;
+               m_selectMode = (e_selectMode)patch->m_selectMode;
+           }
+           else
+           {
+               m_startSelectBlock = -1;
+               m_startSelectPos = 0;
+               m_startSelectWidth = 0;
+               m_endSelectBlock = -1;
+               m_endSelectPos = 0;
+               m_endSelectWidth = 0;
+               m_selectMode = NO_SELECTED;
+           }
+           doc->copyData(docPrev);
+           doc->calcProps();
+           updateTables(doc);
+           calcTables();
+           calc(0,true);
+           calcData(true);
+           calcCursor(true);
+
+           //    if(m_currentPatch > -1)
+           m_currentPatch--;
+       }
+   }
+}
+
+void EjTextControl::redo()
+{
+    bool isError;
+    QList<EjBlock*> unused;
+    if(m_currentPatch > -2 && m_currentPatch < m_lPatches.count() - 1)
+    {
+        m_currentPatch++;
+        PatchUndoRedo *patch = m_lPatches[m_currentPatch];
+        if(!patch->m_attributes.isEmpty())
+        {
+            isError = false;
+            try {
+                *doc->lPropBlocks  = patch2(*doc->lPropBlocks, unused, patch->m_attributes, false);
+                doc->m_attrProp = nullptr;
+            }
+            catch(...)
+            {
+                isError = true;
+                qDebug() << "Error for load " << __FILE__ << __LINE__ ;
+            }
+            if(!isError)
+                qDeleteAll(unused);
+            unused.clear();
+        }
+
+        if(!patch->m_body.isEmpty())
+        {
+            isError = false;
+            try {
+                *doc->lBlocks  = patch2(*doc->lBlocks, unused, patch->m_body, false);
+            }
+            catch(...)
+            {
+                isError = true;
+                qDebug() << "Error for load " << __FILE__ << __LINE__ ;
+            }
+            if(!isError)
+                qDeleteAll(unused);
+            unused.clear();
+        }
+
+        if(!patch->m_body.isEmpty() || !patch->m_attributes.isEmpty())
+        {
+            activeIndex = patch->m_activeIndex;
+            position = patch->m_position;
+            m_startSelectBlock = patch->m_startSelectBlock;
+            m_startSelectPos = patch->m_startSelectPos;
+            m_startSelectWidth = patch->m_startSelectWidth;
+            m_endSelectBlock = patch->m_endSelectBlock;
+            m_endSelectPos = patch->m_endSelectPos;
+            m_endSelectWidth = patch->m_endSelectWidth;
+            m_selectMode = (e_selectMode)patch->m_selectMode;
+            doc->copyData(docPrev);
+            doc->calcProps();
+            updateTables(doc);
+            calcTables();
+            calc(0,true);
+            calcData(true);
+            calcCursor(true);
+        }
+    }
+
+}
+
+
+int EjTextControl::GetNormalPageHeight()
+{
+    if (m_defaultOrientation == EjDocLayout::ORN_PORTRAIT){
+        return m_defaultPageHeight;
+    }
+
+    return m_defaultPageWidth;
+}
+
+
+int EjTextControl::GetNormalPageWidth()
+{
+    if (m_defaultOrientation == EjDocLayout::ORN_PORTRAIT){
+        return m_defaultPageWidth;
+    }
+
+    return m_defaultPageHeight;
 }
 
 
 void EjTextControl::setIsViewDoc(bool source)
 {
     m_isViewDoc = source;
+
+    if (doc == nullptr){
+        return;
+    }
     qDeleteAll(*doc->lStrings);
     doc->lStrings->clear();
     qDeleteAll(*doc->lPages);
@@ -3370,7 +4785,15 @@ void EjTextControl::setIsViewDoc(bool source)
 
 void EjTextControl::setDocument(EjDocument *document)
 {
-	EjCalcParams calcParams;
+    //    doc->lBlocks = doc->doc->lBlocks;
+    //    doc->lStrings = doc->doc->lStrings;
+    //    doc->lPages = doc->doc->lPages;
+    ////    lFragments = doc->lFragments;
+    //    doc->lTables = doc->doc->lTables;
+    //    lStyles-> = doc->lStyles->;
+    //    m_Title = doc->title;
+    //    m_Tags = doc->lTags;
+    EjCalcParams calcParams;
     LabelBlock *curLabel;
     int index;
 
@@ -3393,7 +4816,7 @@ void EjTextControl::setDocument(EjDocument *document)
     }
     if(activeIndex > -1 && (doc->lBlocks->at(activeIndex)->type == TEXT || doc->lBlocks->at(activeIndex)->type == BASECELL))
     {
-		int len = ((EjTextBlock*)(doc->lBlocks->at(activeIndex)))->text.length();
+        int len = ((EjTextBlock*)(doc->lBlocks->at(activeIndex)))->text.length();
         if(position > len)
             position = len;
     }
@@ -3403,7 +4826,16 @@ void EjTextControl::setDocument(EjDocument *document)
     m_endSelectBlock = -1;
     m_startSelectPos = 0;
     m_endSelectPos = 0;
+    //    calculator.doc.lBlocks = doc->lBlocks;
+    //    calculator.doc.lStrings = doc->lStrings;
+    //    calculator.doc.lPages = doc->lPages;
+    //    calculator.doc.lFragments = doc->lFragments;
+    //    calculator.doc.lTables = doc->lTables;
     m_calcIndex = 0;
+    //    if(activeBlock >= 0 && doc->lBlocks->at(activeBlock)->type == TEXT)
+    //    {
+    //        position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeBlock))->text.size();
+    //    }
     updateTables(doc);
 
     calcParams.textStyle = getTextStyle(0);
@@ -3423,6 +4855,11 @@ void EjTextControl::setDocument(EjDocument *document)
         index = doc->lBlocks->indexOf(curLabel);
         curLabel->calcBlock(index, &calcParams);
     }
+
+//    calculator.calcTables();
+//    updateTables(doc);
+//    calcTables();
+
     calcNext();
     calcCursor();
 }
@@ -3431,6 +4868,7 @@ bool EjTextControl::pasteCells()
 {
 
     int index = activeIndex;
+    EjBlock* curBlock;
 
     int count_cells = 0;
 
@@ -3441,6 +4879,21 @@ bool EjTextControl::pasteCells()
             count_cells++;
         }
     }
+
+//    while (doc->lBlocks->at(index)->type != e_typeBlocks::BASECELL)
+//    {
+//        index--;
+//    }
+
+//    for (int i = 0; i < m_clipboardDoc->lBlocks->count(); i++)
+//    {
+//        curBlock = m_clipboardDoc->lBlocks->at(i);
+//        if (curBlock->type == e_typeBlocks::BASECELL)
+//        {
+
+//        }
+//    }
+
     int temp_index = 1;
     for (int i = 0; i < count_cells; i++)
     {
@@ -3468,7 +4921,7 @@ bool EjTextControl::copyCells()
 {
     if(m_clipboardDoc)
         delete m_clipboardDoc;
-	m_clipboardDoc = new EjDocument();
+    m_clipboardDoc = new EjDocument();
     EjBlock* curBlock;
     for(int i = 0; i < doc->lPropBlocks->count(); i++)
     {
@@ -3479,6 +4932,7 @@ bool EjTextControl::copyCells()
     m_clipboardDoc->calcProps();
     int startBlock = m_startSelectBlock;
     int endBlock = m_endSelectBlock;
+    //EjTableBlock* tableBlock;
     if (m_startSelectBlock > -1 && m_endSelectBlock > -1)
     {
 
@@ -3502,11 +4956,15 @@ bool EjTextControl::copyCells()
 
 bool EjTextControl::menuActivate(QString command, QString data)
 {
-	EjFragmentBlock *fragment;
+    //m_startSelectBlock
+    EjFragmentBlock *fragment;
     Param param;
     EjBlock *cur_Block;
-	EjTextBlock *cur_textBlock;
+    EjTextBlock *cur_textBlock;
     bool res = true;
+    int n_blockEnd = m_endSelectBlock;
+    int n_pos = m_startSelectPos;
+    int n_blockStart = m_startSelectBlock;
     QClipboard *clipboard = QGuiApplication::clipboard();
     const QMimeData *mimeData = clipboard->mimeData();
     QString str;
@@ -3515,92 +4973,151 @@ bool EjTextControl::menuActivate(QString command, QString data)
     if(m_endSelectBlock > 0 && doc->lBlocks->at(m_endSelectBlock)->type == TEXT && m_endSelectPos == 0){
         m_endSelectBlock--;
         if(doc->lBlocks->at(m_endSelectBlock)->type == TEXT)
-			m_endSelectPos = static_cast<EjTextBlock*>(doc->lBlocks->at(m_endSelectBlock))->text.size();
+            m_endSelectPos = static_cast<EjTextBlock*>(doc->lBlocks->at(m_endSelectBlock))->text.size();
 
     }
 
-	fragment = new EjFragmentBlock();
+    fragment = new EjFragmentBlock();
     if(command == "B" || command == "I" || command == "U" || command == "dB" || command == "dI" || command == "dU" || command == "Cut" || command == "Del")
     {
+//        if(m_selectMode == SELECTED)
+//        {
+//            activeIndex = m_startSelectBlock;
+//            if(activeIndex > -1 && (doc->lBlocks->at(activeIndex)->type == TEXT || doc->lBlocks->at(activeIndex)->type == BASECELL) )
+//            {
+//                res = splitText(n_blockStart,n_pos);
+//                if(res) {
+//                    if(m_startSelectBlock == m_endSelectBlock)
+//                        m_endSelectPos -= m_startSelectPos;
+//                    m_startSelectBlock++;
+//                    m_endSelectBlock++;
+//                    n_blockEnd++;
+//                }
+//                else
+//                    m_startSelectBlock = n_blockStart;
+//            }
+//            m_startSelectPos = 0;
+//            n_pos = m_endSelectPos;
+//            res = splitText(n_blockEnd,n_pos);
 
+//            if(command == "B" || command == "I" || command == "U")
+//            {
+//                doc->lBlocks->insert(m_startSelectBlock, fragment);
+//                fragment->startBlock = m_startSelectBlock;
+//                fragment->endBlock = m_endSelectBlock+1;
+//                fragment->countBlocks = fragment->endBlock - fragment->startBlock;
+//                updateFragments(m_startSelectBlock,true);
+//                //                doc->lFragments.append(fragment);
+//                m_endSelectBlock++;
+//                m_startSelectBlock++;
+//            }
+
+//        }
+//        else // if(doc->lBlocks->at(activeBlock)->type != BASECELL)
+//        {
+//            res = splitText(activeIndex,position);
+//            position = 0;
+//            //            updateFragments(activeBlock,true);
+//            doc->lBlocks->insert(activeIndex,new EjTextBlock());
+////            updateFragments(activeIndex, true);
+
+//            if(command == "B" || command == "I" || command == "U")
+//            {
+//                doc->lBlocks->insert(activeIndex, fragment);
+//                fragment->startBlock = activeIndex;
+//                fragment->endBlock = activeIndex + 1;
+//                fragment->countBlocks = 1;
+//                updateFragments(activeIndex,true);
+//                //                m_lFragments.append(fragment);
+//            }
+//        }
     }
     if(command == "B")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
 		textStyle->setFontBold(true);
 		setTextStyle(textStyle,false,true);
         delete textStyle;
     }
     else if(command == "I")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
 		textStyle->setFontItalic(true);
 		setTextStyle(textStyle,false,true);
         delete textStyle;
     }
     else if(command == "U")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
 		textStyle->setFontUnderline(true);
 		setTextStyle(textStyle,false,true);
         delete textStyle;
     }
     else if(command == "dB")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
 		textStyle->setFontBold(false);
 		setTextStyle(textStyle,false,true);
         delete textStyle;
     }
     else if(command == "dI")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
 		textStyle->setFontItalic(false);
 		setTextStyle(textStyle,false,true);
         delete textStyle;
     }
     else if(command == "dU")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
 		textStyle->setFontUnderline(false);
 		setTextStyle(textStyle,false,true);
 		delete textStyle;
     }
     else if(command == "FontStyle" && data != "")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
         int fontStyle = data.toInt();
         if(textStyle->fontStyle() != fontStyle)
         {
-			textStyle->setFontStyle(EjTextStyle::e_fontStyle(fontStyle));
+            textStyle->setFontStyle(EjTextStyle::e_fontStyle(fontStyle));
             if(fontStyle == 0) {
                 textStyle->setFontSize(12); textStyle->setFontBold(false); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 1) {
+//                textStyle.fontSize = 10; textStyle.fontBold = textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(10); textStyle->setFontBold(false); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 2) {
+//                textStyle.fontSize = 8; textStyle.fontBold = textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(8); textStyle->setFontBold(false); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 3) {
+//                textStyle.fontSize = 16; textStyle.fontBold = textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(16); textStyle->setFontBold(false); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 4) {
+//                textStyle.fontSize = 18; textStyle.fontBold = textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(18); textStyle->setFontBold(false); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
-			if(fontStyle == 10) {
+            if(fontStyle == 10) {
+//                textStyle.fontSize = 20; textStyle.fontBold = true; textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(20); textStyle->setFontBold(true); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 11) {
+//                textStyle.fontSize = 18; textStyle.fontBold = true; textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(18); textStyle->setFontBold(true); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 12) {
+//                textStyle.fontSize = 14; textStyle.fontBold = true; textStyle.fontItalic = textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(14); textStyle->setFontBold(true); textStyle->setFontItalic(false); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 13) {
+//                textStyle.fontSize = 13; textStyle.fontBold = textStyle.fontItalic = true; textStyle.fontUnderline = textStyle.fontStrikeout = false;
                 textStyle->setFontSize(13); textStyle->setFontBold(true); textStyle->setFontItalic(true); textStyle->setFontUnderline(false); textStyle->setFontStrikeOut(false);
             }
             if(fontStyle == 14) {
+//                textStyle.fontSize = 13; textStyle.fontBold = textStyle.fontItalic = textStyle.fontUnderline = true; textStyle.fontStrikeout = false;
                 textStyle->setFontSize(13); textStyle->setFontBold(true); textStyle->setFontItalic(true); textStyle->setFontUnderline(true); textStyle->setFontStrikeOut(false);
             }
 
@@ -3612,7 +5129,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
     }
     else if(command == "TextColor" && data != "")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
         QColor textColor = QColor(data);
         if(textStyle->fontColor() != textColor)
         {
@@ -3623,7 +5140,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
     }
     else if(command == "FillColor" && data != "")
     {
-		EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
+        EjTextStyle *textStyle = dynamic_cast<EjTextStyle*>(getSelectedTextStyle(activeIndex)->makeCopy());
         QColor fillColor = QColor(data);
         if(textStyle->brushColor() != fillColor)
         {
@@ -3634,13 +5151,13 @@ bool EjTextControl::menuActivate(QString command, QString data)
     }
     else if(command == "AlignLeft")
     {
-		EjParagraphStyle *prgStyle = dynamic_cast<EjParagraphStyle*>(getParagraphStyle(activeIndex)->makeCopy());
+        EjParagraphStyle *prgStyle = dynamic_cast<EjParagraphStyle*>(getParagraphStyle(activeIndex)->makeCopy());
         int align = prgStyle->align();
-		if(!(align & EjParagraphStyle::AlignLeft))
+        if(!(align & EjParagraphStyle::AlignLeft))
         {
-			align |= EjParagraphStyle::AlignLeft;
-			align &= ~EjParagraphStyle::AlignHCenter;
-			align &= ~EjParagraphStyle::AlignRight;
+            align |= EjParagraphStyle::AlignLeft;
+            align &= ~EjParagraphStyle::AlignHCenter;
+            align &= ~EjParagraphStyle::AlignRight;
             prgStyle->setAlign(align);
             setParagraphStyle(prgStyle);
         }
@@ -3650,13 +5167,13 @@ bool EjTextControl::menuActivate(QString command, QString data)
     }
     else if(command == "AlignHCenter")
     {
-		EjParagraphStyle *prgStyle = dynamic_cast<EjParagraphStyle*>(getParagraphStyle(activeIndex)->makeCopy());
+        EjParagraphStyle *prgStyle = dynamic_cast<EjParagraphStyle*>(getParagraphStyle(activeIndex)->makeCopy());
         int align = prgStyle->align();
-		if(!(align & EjParagraphStyle::AlignHCenter))
+        if(!(align & EjParagraphStyle::AlignHCenter))
         {
-			align &= ~EjParagraphStyle::AlignLeft;
-			align |= EjParagraphStyle::AlignHCenter;
-			align &= ~EjParagraphStyle::AlignRight;
+            align &= ~EjParagraphStyle::AlignLeft;
+            align |= EjParagraphStyle::AlignHCenter;
+            align &= ~EjParagraphStyle::AlignRight;
             prgStyle->setAlign(align);
             setParagraphStyle(prgStyle);
         }
@@ -3666,13 +5183,13 @@ bool EjTextControl::menuActivate(QString command, QString data)
     }
     else if(command == "AlignRight")
     {
-		EjParagraphStyle *prgStyle = dynamic_cast<EjParagraphStyle*>(getParagraphStyle(activeIndex)->makeCopy());
+        EjParagraphStyle *prgStyle = dynamic_cast<EjParagraphStyle*>(getParagraphStyle(activeIndex)->makeCopy());
         int align = prgStyle->align();
-		if(!(align & EjParagraphStyle::AlignRight))
+        if(!(align & EjParagraphStyle::AlignRight))
         {
-			align &= ~EjParagraphStyle::AlignLeft;
-			align &= ~EjParagraphStyle::AlignHCenter;
-			align |= EjParagraphStyle::AlignRight;
+            align &= ~EjParagraphStyle::AlignLeft;
+            align &= ~EjParagraphStyle::AlignHCenter;
+            align |= EjParagraphStyle::AlignRight;
             prgStyle->setAlign(align);
             setParagraphStyle(prgStyle);
         }
@@ -3683,11 +5200,23 @@ bool EjTextControl::menuActivate(QString command, QString data)
     else if(command == "Call")
     {
         QString tel = isTell();
-		if(tel.length() > 3)
+//        for (int i = 0; i < str.size(); ++i) {
+//            if ((str.at(i) >= QChar('0') && str.at(i) <= QChar('9')) || str.at(i) == QChar('-') || str.at(i) == QChar('+'))
+//                tel += str.at(i);
+//            if(tel.count() > 50)
+//                break;
+//        }
+        if(tel.count() > 3)
             emit ring(tel);
     }
+//    else if(command == "Copy" || command == "Cut" || command == "Del" || command == "Call")
     else if(command == "Copy" || command == "Cut" || command == "Del")
     {
+        //        if(m_endSelectBlock > doc->lBlocks->count() - 1)
+        //            m_endSelectBlock = doc->lBlocks->count() - 1;
+
+        //return copyCells();
+
         int startSelectBlock = m_startSelectBlock;
         int endSelectBlock = m_endSelectBlock;
         if(startSelectBlock == -1)
@@ -3706,19 +5235,24 @@ bool EjTextControl::menuActivate(QString command, QString data)
         }
         if(command != "Del")
         {
+            bool res = false;
+            int row_index, colum_index;
             int row_start, colum_start;
             int row_end, colum_end;
-			EjCellBlock *curCell;
-			EjTableBlock *curTable;
+            EjCellBlock *curCell;
+            EjTableBlock *curTable;
             EjBlock *curBlock;
+            TableFragment *curFragment;
             int indexStart;
             int indexEnd;
             int startSelect = startSelectBlock;
             int endSelect = endSelectBlock;
 
+//            qDeleteAll(m_lClipboardBlocks);
+//            m_lClipboardBlocks.clear();
             if(m_clipboardDoc)
                 delete m_clipboardDoc;
-			m_clipboardDoc = new EjDocument();
+            m_clipboardDoc = new EjDocument();
             for(int i = 0; i < doc->lPropBlocks->count(); i++)
             {
                 curBlock = doc->lPropBlocks->at(i);
@@ -3741,41 +5275,66 @@ bool EjTextControl::menuActivate(QString command, QString data)
             }
             for(int i = startSelect; i <= endSelect; i++)
             {
+                //                if(isCellSelected(i))
                 if(doc->lBlocks->at(i)->type == EXT_TABLE)
                 {
-					curTable = (EjTableBlock *)doc->lBlocks->at(i)->makeCopy();
+                    curTable = (EjTableBlock *)doc->lBlocks->at(i)->makeCopy();
                     curTable->m_doc = m_clipboardDoc;
 
                     m_clipboardDoc->lBlocks->append(curTable);
                 }
                 else if(doc->lBlocks->at(i)->type == BASECELL)
                 {
-					curCell = (EjCellBlock*)doc->lBlocks->at(i);
-					indexStart = ((EjTableBlock*)(curCell->m_parent))->m_index + 1;
-					indexEnd = ((EjTableBlock*)(curCell->m_parent))->endBlock();
+                    //                    isCellSelected(i)
+                    //                    BaseCellBlock *curBlockStart;
+                    //                    BaseCellBlock *curBlockEnd;
+                    //                    curBlockStart = (BaseCellBlock*)doc->lBlocks->at(m_startSelectBlock);
+                    //                    curBlockEnd = (BaseCellBlock*)doc->lBlocks->at(m_endSelectBlock);
+                    curCell = (EjCellBlock*)doc->lBlocks->at(i);
+//                    curTable = (EjTableBlock *)curCell->parent->makeCopy();
+//                    curTable->m_doc = m_clipboardDoc;
+                    //                    indexStart = doc->lBlocks->indexOf(curBlockCurrent->parent) + 1;
+                    //                    indexEnd = indexStart + curTable->nRows()*curTable->nColums();
+                    indexStart = ((EjTableBlock*)(curCell->parent))->m_index + 1;
+                    indexEnd = ((EjTableBlock*)(curCell->parent))->endBlock();
 
 
-					curTable = (EjTableBlock*)curTable->makeCopy();
+                    //curTable->m_doc = m_clipboardDoc;//custom
+                   // m_clipboardDoc->lBlocks->append(curTable);
+                    curTable = (EjTableBlock*)curTable->makeCopy();
                     curTable->m_doc = m_clipboardDoc;
                     m_clipboardDoc->lBlocks->append(curTable);
                     curTable->m_index = m_clipboardDoc->lBlocks->indexOf(curTable);
                     curTable->m_counts = indexEnd - indexStart + 1;
                     if(curTable->m_counts < 0)
                         curTable->m_counts = 0;
+//                    curTable->endBlock = curTable->startBlock + curTable->countBlocks;
 
+                    EjCellBlock *cell_block;
                     for(int j = indexStart; j <= indexEnd; j++)
                     {
+                        //                        if(j == startSelectBlock || isCellSelected(j))
+                        //                            curBlock = (BaseCellBlock*)doc->lBlocks->at(j)->makeCopy();
+                        //                        else
+                        //                            curBlock = new BaseCellBlock();
+                        //                        curBlock->parent = curTable;
                         curBlock = doc->lBlocks->at(j)->makeCopy();
 
                         if(curBlock->type == BASECELL)
                         {
-							((EjCellBlock *)curBlock)->m_parent = curTable;
-							int index = doc->lPropBlocks->indexOf(((EjCellBlock *)doc->lBlocks->at(j))->cellStyle);
-							((EjCellBlock *)curBlock)->cellStyle = (EjCellStyle *)(m_clipboardDoc->lPropBlocks->at(index));
-						}
+                            cell_block = (EjCellBlock *)curBlock;
+                            ((EjCellBlock *)curBlock)->parent = curTable;
+                            int index = doc->lPropBlocks->indexOf(((EjCellBlock *)doc->lBlocks->at(j))->cellStyle);
+                            ((EjCellBlock *)curBlock)->cellStyle = (EjCellStyle *)(m_clipboardDoc->lPropBlocks->at(index));
+                        }/*
+                        else if (curBlock->type == NUM_STYLE && ((EjNumStyleBlock*)curBlock)->style->m_vid == e_PropDoc::CELL_STYLE)
+                        {
+                            ((EjNumStyleBlock*)curBlock)->style = cell_block->cellStyle;
+                        }*/
                         m_clipboardDoc->lBlocks->append(curBlock);
                         i = j;
                     }
+
                     if(startSelect > indexStart)
                         indexStart = startSelectBlock;
                     if(endSelect < indexEnd)
@@ -3784,19 +5343,29 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     getBaseCellParams(indexEnd, row_end, colum_end);
                     curTable->start_column = colum_start;
                     curTable->start_row = row_start;
-					if(curTable->vid == EjTableBlock::SHOP_LIST)
+                    if(curTable->vid == EjTableBlock::SHOP_LIST)
                     {
+//                        curFragment = new TableFragment();
+//                        curFragment->setStartColum(colum_start);
+//                        curFragment->setEndColum(colum_end);
+//                        curFragment->setStartRow(row_start);
+//                        curFragment->setEndRow(row_end);
+//                        curFragment->type = EjFragment::Select;
+//                        curTable->lFragments.append(curFragment);
                         colum_start = 0;
-						colum_end = ((EjTableBlock*)(curCell->m_parent))->nColums();
+                        colum_end = ((EjTableBlock*)(curCell->parent))->nColums();
+                        //                        colum_start = doc->lBlocks->indexOf(curBlockCurrent->parent) + 1 + row_start*curBlockCurrent->parent->nColums();
+                        //                        colum_end = doc->lBlocks->indexOf(curBlockCurrent->parent) + 1 + row_end*curBlockCurrent->parent->nColums();
                     }
-					row_end = ((EjTableBlock*)(curCell->m_parent))->nRows() - row_end - 1;
+                    row_end = ((EjTableBlock*)(curCell->parent))->nRows() - row_end - 1;
                     if(row_end < 0)
                         row_end = 0;
-					colum_end = ((EjTableBlock*)(curCell->m_parent))->nColums() - colum_end - 1;
+                    colum_end = ((EjTableBlock*)(curCell->parent))->nColums() - colum_end - 1;
                     if(colum_end < 0)
                         colum_end = 0;
+//                    indexStart = m_lClipboardBlocks.indexOf(curTable) + 1;
                     indexStart = curTable->cellIndex(0,0,m_clipboardDoc->lBlocks);
-					if(curTable->vid == EjTableBlock::SHOP_LIST)
+                    if(curTable->vid == EjTableBlock::SHOP_LIST)
                     {
                         row_start--;
                         if(row_start < 0)
@@ -3813,33 +5382,38 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     for(int j = 0; j < row_end; j++)
                     {
                         indexEnd = m_clipboardDoc->lBlocks->count() - 2;
-						if(curTable->vid == EjTableBlock::SHOP_LIST)
+                        if(curTable->vid == EjTableBlock::SHOP_LIST)
                             indexEnd -= curTable->nColums();
                         curTable->delString(m_clipboardDoc->lBlocks,indexEnd);
                     }
                     for(int j = 0; j < colum_start; j++)
                     {
+//                        delTableColum(&m_lClipboardBlocks,indexStart);
                         curTable->delColum(m_clipboardDoc->lBlocks,indexStart);
                     }
                     for(int j = 0; j < colum_end; j++)
                     {
                         indexEnd = m_clipboardDoc->lBlocks->count() - 2;
-						if(curTable->vid == EjTableBlock::SHOP_LIST)
+                        if(curTable->vid == EjTableBlock::SHOP_LIST)
                             indexEnd -= curTable->nColums();
+//                        delTableColum(&m_lClipboardBlocks,indexEnd);
                         curTable->delColum(m_clipboardDoc->lBlocks,indexEnd);
                     }
+//                    curTable->endBlock = curTable->startBlock + curTable->countBlocks;
+
+
                 }
                 else if(doc->lBlocks->at(i)->type != EXT_TABLE)
                     m_clipboardDoc->lBlocks->append(doc->lBlocks->at(i)->makeCopy());
             }
             if(m_startSelectPos > 0 && m_clipboardDoc->lBlocks->count() > 0 && m_clipboardDoc->lBlocks->at(0)->type == TEXT)
             {
-				cur_textBlock = (EjTextBlock*)m_clipboardDoc->lBlocks->at(0);
+                cur_textBlock = (EjTextBlock*)m_clipboardDoc->lBlocks->at(0);
                 cur_textBlock->text = cur_textBlock->text.right(cur_textBlock->text.size() - m_startSelectPos);
             }
             if(m_endSelectPos > 0 && m_clipboardDoc->lBlocks->count() > 0 && m_clipboardDoc->lBlocks->at(m_clipboardDoc->lBlocks->count()-1)->type == TEXT)
             {
-				cur_textBlock = (EjTextBlock*)m_clipboardDoc->lBlocks->at(m_clipboardDoc->lBlocks->count()-1);
+                cur_textBlock = (EjTextBlock*)m_clipboardDoc->lBlocks->at(m_clipboardDoc->lBlocks->count()-1);
                 cur_textBlock->text = cur_textBlock->text.left(m_endSelectPos);
             }
             str.clear();
@@ -3851,34 +5425,44 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     str += " Image ";
                     break;
                 case TEXT:
-					str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
+                    str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
                     break;
                 case EXT_TABLE:
-					curTable = (EjTableBlock*)m_clipboardDoc->lBlocks->at(i);
+                    curTable = (EjTableBlock*)m_clipboardDoc->lBlocks->at(i);
                     break;
                 case BASECELL:
                     if(curTable)
                     {
-						EjCellBlock *curBlock = (EjCellBlock*)m_clipboardDoc->lBlocks->at(i);
+                        EjCellBlock *curBlock = (EjCellBlock*)m_clipboardDoc->lBlocks->at(i);
+                        //                    EjTableBlock *curTable = (EjTableBlock*)curBlock->parent;
+                        //                        int start = m_lClipboardBlocks.indexOf(curTable)+1;
+                        //                        int row = (i - start)/ curTable->nColums();
+                        //                        int colum = i - start - row*curTable->nColums();
                         int row;
                         int colum;
                         cellParams(curTable,i,row,colum,m_clipboardDoc->lBlocks);
-						if(colum > 0 || curBlock->vid == EjCellBlock::CELL_CHECK)
+                        if(colum > 0 || curBlock->vid == EjCellBlock::CELL_CHECK)
                             str += QChar(QChar::Tabulation);
+                        //                        if(!curBlock->text.isEmpty())
                         str += curBlock->getText();
+                        //                        else
+                        //                            str += QChar(QChar::Tabulation);
                         while(i < m_clipboardDoc->lBlocks->count() - 1 && m_clipboardDoc->lBlocks->at(i + 1)->type != BASECELL)
                         {
                             i++;
                             if(m_clipboardDoc->lBlocks->at(i)->type == SPACE)
                                 str += ' ';
                             else if(m_clipboardDoc->lBlocks->at(i)->type == TEXT)
-								str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
+                                str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
                         }
                         if(colum == curTable->nColums() - 1)
                             str += "\r\n";
                     }
                     break;
 
+                    //                case CHECK:
+                    //                    str += QChar(QChar::Tabulation);
+                    //                    break;
                 case SPACE:
                     str += ' ';
                     break;
@@ -3889,6 +5473,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
                 }
             }
             QMimeData mimeData;
+//            mimeData.setText(str);
             clipboard->setText(str);
 
             m_htmlBuffer = str;
@@ -3898,10 +5483,10 @@ bool EjTextControl::menuActivate(QString command, QString data)
                 for (int i = 0; i < str.size(); ++i) {
                     if ((str.at(i) >= QChar('0') && str.at(i) <= QChar('9')) || str.at(i) == QChar('-') || str.at(i) == QChar('+'))
                         tel += str.at(i);
-					if(tel.length() > 50)
+                    if(tel.count() > 50)
                         break;
                 }
-				if(tel.length() > 3)
+                if(tel.count() > 3)
                     emit ring(tel);
             }
             str.clear();
@@ -3931,6 +5516,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
                            " </head> \n"
                            " <body> \n"
                            " <p> \n" );
+            //            EjTableBlock *curTable = 0;
             bool isTable = false;
             for(int i = 0; i < m_clipboardDoc->lBlocks->count(); i++)
             {
@@ -3942,30 +5528,43 @@ bool EjTextControl::menuActivate(QString command, QString data)
                 }
                 switch (m_clipboardDoc->lBlocks->at(i)->type) {
                 case TEXT:
-					str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
+                    str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
                     break;
                 case EXT_TABLE:
                     str += " </p> \n";
                     str += " <table cellspacing=\"0\" cellpadding=\"4\" > \n";
                     str += " <tr> \n";
-					curTable = (EjTableBlock*)m_clipboardDoc->lBlocks->at(i);
+                    curTable = (EjTableBlock*)m_clipboardDoc->lBlocks->at(i);
                     isTable = true;
                     break;
                 case BASECELL:
                     if(curTable)
                     {
+                        EjCellBlock *curBlock = (EjCellBlock*)m_clipboardDoc->lBlocks->at(i);
+//                        if(curBlock->vid == EjCellBlock::ENDTABLE)
+//                            break;
+                        //                    EjTableBlock *curTable = (EjTableBlock*)curBlock->parent;
+                        //                        int start = m_lClipboardBlocks.indexOf(curTable)+1;
+                        //                        int row = (i - start)/ curTable->nColums();
+                        //                        int colum = i - start - row*curTable->nColums();
+                        //                        if(colum > 0)
+                        //                            str += QChar(QChar::Tabulation);
+                        //                        if(!curBlock->text.isEmpty())
                         int row;
                         int colum;
                         cellParams(curTable,i,row,colum,m_clipboardDoc->lBlocks);
 
                         str += "<td><p>";
+//                        str += curBlock->text;
+                        //                        else
+                        //                            str += QChar(QChar::Tabulation);
                         while(i < m_clipboardDoc->lBlocks->count() - 1 &&  m_clipboardDoc->lBlocks->at(i + 1)->type != BASECELL)
                         {
                             i++;
                             if(m_clipboardDoc->lBlocks->at(i)->type == SPACE)
                                 str += ' ';
                             else if(m_clipboardDoc->lBlocks->at(i)->type == TEXT)
-								str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
+                                str += static_cast<EjTextBlock*>(m_clipboardDoc->lBlocks->at(i))->text;
                         }
                         str += "</p></td>";
 
@@ -3978,6 +5577,10 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     }
                     break;
 
+                    //                case CHECK:
+                    //                    str += " <td><p>";
+                    //                    str += "</p></td>";
+                    //                    break;
                 case SPACE:
                     str += ' ';
                     break;
@@ -3994,7 +5597,14 @@ bool EjTextControl::menuActivate(QString command, QString data)
             }
             else
                 str += " </p> \n";
-			str += " </body> \n  </html> ";
+            str += " </body> \n  </html> ";
+            //            clipboard->setText(str);
+            //            QMimeData mimeData;
+//            mimeData.setHtml(str);
+//            clipboard->setMimeData(&mimeData);
+            //            m_htmlBuffer = str;
+
+
         }
         res = false;
         if(command == "Cut")
@@ -4009,14 +5619,59 @@ bool EjTextControl::menuActivate(QString command, QString data)
         {
             inputBackSpace();
             calc(0);
+//            //            int n_blockEnd = m_endSelectBlock;
+//            //            int n_blockStart = m_startSelectBlock;
+//            //            activeBlock = m_startSelectBlock;
+//            //            res = splitText(n_blockStart,m_startSelectPos);
+//            //            if(res) {
+//            //                m_startSelectBlock++;
+//            //                m_endSelectBlock++;
+//            //                n_blockEnd++;
+//            //            }
+//            //            res = splitText(n_blockEnd,m_endSelectPos);
+//            for(int i = startSelectBlock; i <= endSelectBlock; i++)
+//            {
+//                if(doc->lBlocks->at(i)->type == EXT_TABLE)
+//                    continue;
+//                if(doc->lBlocks->at(i)->type == BASECELL)
+//                {
+////                    EjCellBlock *curCell = (EjCellBlock*)doc->lBlocks->at(i);
+////                    curCell->vid = EjCellBlock::CELL_AUTO;
+////                    curCell->text = "";
+////                    curCell->formula = "";
+//                }
+//                else
+//                {
+//                    cur_Block = doc->lBlocks->takeAt(i);
+//                    updateFragments(i,false);
+//                    //                    updateFragments(i,false);
+//                    m_endSelectBlock--;
+//                    endSelectBlock--;
+//                    i--;
+//                    delete cur_Block;
+//                    cur_Block = 0;
+//                }
+//            }
+//            position = 0;
+//            if(activeIndex > doc->lBlocks->count()-1) activeIndex = doc->lBlocks->count()-1;
+//            if(doc->lBlocks->count() > 0 && doc->lBlocks->at(activeIndex)->type == TEXT)
+//            {
+//                cur_textBlock = (EjTextBlock*)doc->lBlocks->at(activeIndex);
+//                position = cur_textBlock->text.size();
+//            }
+//            res = true;
         }
     }
     else if(command == "Past")
     {
         if(activeIndex > -1 && doc->lBlocks->at(activeIndex)->type == EXT_TABLE)
             return false;
+
+
+
+       // return pasteCells();
         m_createPatchEnabled = false;
-		EjCellBlock *curCell;
+        EjCellBlock *curCell;
         int count;
         e_statusMode statusMode_bak;
         QString txt;
@@ -4027,19 +5682,36 @@ bool EjTextControl::menuActivate(QString command, QString data)
 
 
         if(activeIndex > -1 && isTable(activeIndex))
-		{
+        {
+//            while(doc->lBlocks->at(activeIndex)->type != BASECELL)
+//                activeIndex--;
+//            curCell = (EjCellBlock*)doc->lBlocks->at(activeIndex);
+//            if(doc->lBlocks->at(activeIndex)->type == TEXT)
+//                activeIndex++;
+//            position = 0;
+
             if (m_clipboardDoc->lBlocks->at(0)->type != EXT_TABLE && m_clipboardDoc->lBlocks->size() > 1)
             {
                 return false;
             }
 
             int index = activeIndex;
+//            doc->lPropBlocks->clear();
+//            for(int i = 0; i < m_clipboardDoc->lPropBlocks->count(); i++)
+//            {
+//                EjBlock *curBlock = m_clipboardDoc->lPropBlocks->at(i);
+//                curBlock = curBlock->makeCopy();
+//                doc->lPropBlocks->append(curBlock);
+//            }
+//            doc->calcProps();
             while(doc->lBlocks->at(index)->type != BASECELL)
                 index--;
-			curCell = (EjCellBlock*)doc->lBlocks->at(index);
-			curCell->vid = EjCellBlock::CELL_AUTO;
+            curCell = (EjCellBlock*)doc->lBlocks->at(index);
+//            curCell->text = "";
+            curCell->vid = EjCellBlock::CELL_AUTO;
             statusMode_bak = m_statusMode;
             m_statusMode = EDIT_CELL;
+            //            if(mimeData->html() == m_htmlBuffer)
             if(mimeData && mimeData->text() == m_htmlBuffer)
             {
                 for(int i = 0; i < m_clipboardDoc->lBlocks->count(); i++)
@@ -4047,15 +5719,32 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     cur_Block = m_clipboardDoc->lBlocks->at(i);
                     if(cur_Block->type == EXT_TABLE)
                     {
-						EjTableBlock *curTable = (EjTableBlock*)m_clipboardDoc->lBlocks->at(i);
-						EjTableBlock *curActiveTable = ((EjTableBlock*)(curCell->m_parent));
-						EjCellBlock *curCell2;
+                        EjTableBlock *curTable = (EjTableBlock*)m_clipboardDoc->lBlocks->at(i);
+                       // curTable->calc();
+                        EjTableBlock *curActiveTable = ((EjTableBlock*)(curCell->parent));
+                        EjCellBlock *curCell2;
+                        TableFragment *curFragment = NULL;
                         int active_row, active_colum;
+                        int activeBlockStart;
                         int nColums = 0;
                         int nRows = 0;
                         int startRow = 0, endRow = 0, startColum = 0, endColum = 0;
-						if(curTable->vid == EjTableBlock::SHOP_LIST)
+                        if(curTable->vid == EjTableBlock::SHOP_LIST)
                         {
+//                            foreach(TableFragment *fragment, *curTable->lFragments)
+//                            {
+//                                if(fragment->type == EjFragment::Select)
+//                                {
+//                                    startRow = fragment->startRow();
+//                                    endRow = fragment->endRow();
+//                                    startColum = fragment->startColum();
+//                                    endColum = fragment->endColum();
+//                                    nColums = endColum - startColum + 1;
+//                                    nRows = endRow - startRow + 1;
+//                                    curFragment = fragment;
+//                                }
+//                            }
+
                         }
                         else
                         {
@@ -4074,6 +5763,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
                         {
                             curActiveTable->addString(this, curCell);
                         }
+                        activeBlockStart = activeIndex;
                         for(int row = 0; row < curTable->nRows(); row++)
                         {
 
@@ -4084,19 +5774,21 @@ bool EjTextControl::menuActivate(QString command, QString data)
                                     continue;
                                 activeIndex = tableCellIndex(curActiveTable,row + active_row,colum + active_colum,doc->lBlocks);
                                 i = tableCellIndex(curTable,row,colum, m_clipboardDoc->lBlocks);
-								curCell = (EjCellBlock*)doc->lBlocks->at(activeIndex);
-								curCell2 = (EjCellBlock*)m_clipboardDoc->lBlocks->at(i);
+                                curCell = (EjCellBlock*)doc->lBlocks->at(activeIndex);
+                                curCell2 = (EjCellBlock*)m_clipboardDoc->lBlocks->at(i);
+                                //curCell2->copyCell(curCell);
                                 while(doc->lBlocks->at(activeIndex+1)->type != END_GROUP && doc->lBlocks->at(activeIndex+1)->type != BASECELL)
                                 {
                                     delete doc->lBlocks->takeAt(activeIndex + 1);
+                                    //doc->lBlocks->removeAt(activeIndex + 1);
                                     updateFragments(activeIndex,false);
                                 }
-								if(curCell->vid == EjCellBlock::CELL_FORMULA)
+                                if(curCell->vid == EjCellBlock::CELL_FORMULA)
                                 {
                                     list.clear();
                                     txt.clear();
                                     QString formula = curCell->formula();
-									for(int i = 0; i < formula.length(); i++)
+                                    for(int i = 0; i < formula.count(); i++)
                                     {
 
                                         if(calculator.is_split(formula[i].toLatin1()) )
@@ -4127,7 +5819,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
                                             if(numColum < 0)
                                                 numColum = 0;
                                             txt = "";
-											txt += QString::number(numColum) + 'A';
+                                            txt += (QString::number(numColum) + 'A');
                                             txt += QString::number(numRow);
                                             list[i2] = txt;
                                         }
@@ -4141,7 +5833,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
                                 }
 
                                 if(row == curTable->nRows() - 1 && colum == curTable->nColums() - 1 && statusMode_bak == EDIT_CELL
-										&& curCell->vid == EjCellBlock::CELL_FORMULA)
+                                        && curCell->vid == EjCellBlock::CELL_FORMULA)
                                     curCell->setText(curCell->formula());
                                 while(m_clipboardDoc->lBlocks->at(i+1)->type != e_typeBlocks::END_GROUP && m_clipboardDoc->lBlocks->at(i+1)->type != BASECELL)
                                 {
@@ -4149,21 +5841,25 @@ bool EjTextControl::menuActivate(QString command, QString data)
                                     cur_Block = m_clipboardDoc->lBlocks->at(i)->makeCopy();
                                     if(cur_Block->type == TEXT)
                                     {
-										cur_textBlock = (EjTextBlock*)cur_Block;
+                                        cur_textBlock = (EjTextBlock*)cur_Block;
+                                        //                                        activeBlock++;
+                                        //                                        doc->lBlocks->insert(activeBlock,new EjTextBlock(cur_textBlock->text));
+                                        //                                        updateTablesParams(activeBlock);
                                         inputText(cur_textBlock->text);
                                     }
                                     else if(cur_Block->type == SPACE)
                                     {
                                         activeIndex++;
-										doc->lBlocks->insert(activeIndex, new EjSpaceBlock());
+                                        doc->lBlocks->insert(activeIndex, new EjSpaceBlock());
                                         updateFragments(activeIndex, true);
+                                        //                                        inputSpace();
                                     }
                                     else if (cur_Block->type == NUM_STYLE)
                                     {
                                         EjNumStyleBlock *block_style = (EjNumStyleBlock*)cur_Block;
                                         if (block_style->style->m_vid == e_PropDoc::CELL_STYLE)
                                         {
-											EjCellStyle *cell_style = new EjCellStyle();
+                                            EjCellStyle *cell_style = new EjCellStyle();
                                             cell_style->setTopBorder(curCell->cellStyle->topBorder());
                                             cell_style->setLeftBorder(curCell->cellStyle->leftBorder());
                                             cell_style->setBottomBorder(curCell->cellStyle->bottomBorder());
@@ -4178,9 +5874,19 @@ bool EjTextControl::menuActivate(QString command, QString data)
 
                                         }else if (block_style->style->m_vid == e_PropDoc::TEXT_STYLE)
                                         {
-											EjTextStyle *text_style = (EjTextStyle*)block_style;
+                                            EjTextStyle *text_style = (EjTextStyle*)block_style;
                                             block_style->style = text_style;
-										}
+                                            //setTextStyle(text_style);
+//                                            activeIndex++;
+//                                            doc->lBlocks->insert(activeIndex, block_style);
+                                        }else if (block_style->style->m_vid == e_PropDoc::PARAGRAPH_STYLE)
+                                        {
+                                            EjParagraphStyle *p_style = (EjParagraphStyle*)block_style;
+                                            //setParagraphStyle(p_style);
+
+//                                            activeIndex++;
+//                                            doc->lBlocks->insert(activeIndex, block_style);
+                                        }
                                     }
                                 }
                             }
@@ -4190,20 +5896,23 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     {
                         if(cur_Block->type == ENTER)
                         {
-							count = ((EjTableBlock*)(curCell->m_parent))->m_counts;
-							if(activeIndex + ((EjTableBlock*)(curCell->m_parent))->nColums() > doc->lBlocks->indexOf(curCell->m_parent) + 1 + count)
+                            //                            count = curCell->parent->nRows() * curCell->parent->nColums();
+                            count = ((EjTableBlock*)(curCell->parent))->m_counts;
+                            //                            activeBlock += curCell->parent->nColums();
+                            if(activeIndex + ((EjTableBlock*)(curCell->parent))->nColums() > doc->lBlocks->indexOf(curCell->parent) + 1 + count)
                             {
                                 addTableString();
                             }
-							activeIndex += ((EjTableBlock*)(curCell->m_parent))->nColums();
-							curCell = (EjCellBlock*)doc->lBlocks->at(activeIndex);
-							curCell->vid = EjCellBlock::CELL_AUTO;
+                            activeIndex += ((EjTableBlock*)(curCell->parent))->nColums();
+                            curCell = (EjCellBlock*)doc->lBlocks->at(activeIndex);
+//                            curCell->text = "";
+                            curCell->vid = EjCellBlock::CELL_AUTO;
                             position = 0;
                         }
                         else if(cur_Block->type == TEXT)
                         {
 
-							cur_textBlock = (EjTextBlock*)m_clipboardDoc->lBlocks->at(i);
+                            cur_textBlock = (EjTextBlock*)m_clipboardDoc->lBlocks->at(i);
                             inputText(cur_textBlock->text);
                         }
                         else if(cur_Block->type == SPACE)
@@ -4217,15 +5926,48 @@ bool EjTextControl::menuActivate(QString command, QString data)
             {
                 if(mimeData && (mimeData->hasHtml() || mimeData->hasText()))
                 {
+                    //                    QStringList lStr;  //=  mimeData->text().split(QChar::Tabulation);
+                    //                    QStringList ltext = mimeData->text().split(" ");
+                    //                    for(int i = 0; i < ltext.count(); i++)
+                    //                    {
+                    //                        if(i > 0)
+                    //                            inputSpace();
+                    //                        lStr =  ltext[i].split(QChar::Tabulation);
+                    //                        for(int j = 0; j < lStr.count(); j++)
+                    //                        {
+                    //                            if(j > 0)
+                    //                            {
+                    //                                activeBlock++;
+                    //                                while(doc->lBlocks->at(activeBlock)->type != BASECELL)
+                    //                                    activeBlock++;
+                    //                                curCell = (BaseCellBlock*)doc->lBlocks->at(activeBlock);
+                    //                            }
+                    //                            inputText(lStr[j]);
+                    //                        }
+                    //                    }
+                    //                    curCell->text = mimeData->text();
+//                    int index = activeIndex;
+//                    while(doc->lBlocks->at(index)->type != BASECELL)
+//                        index--;
+//                    curCell = (EjCellBlock*)doc->lBlocks->at(index);
+//                    EjTableBlock *curTable = ((EjTableBlock*)(curCell->parent));
                     int row, colum;
                     int base_colum;
-					EjTableBlock *curTable = ((EjTableBlock*)(curCell->m_parent));
+                    EjTableBlock *curTable = ((EjTableBlock*)(curCell->parent));
 
                     cellParams(curTable,activeIndex,row,base_colum);
 
                     txt = mimeData->text();
                     QChar chr;
-					for(int i = 0; i < txt.length(); i++)
+//                    curCell->clearData(doc);
+//                    while(doc->lBlocks->at(activeIndex + 1)->type != BASECELL)
+//                    {
+//                        delete doc->lBlocks->takeAt(activeIndex + 1);
+//                        updateFragments(activeIndex,false);
+//                    }
+//                    position = 0;
+
+                    for(int i = 0; i < txt.count(); i++)
                     {
                         chr = txt[i];
                         if(chr == QChar::Space)
@@ -4254,6 +5996,11 @@ bool EjTextControl::menuActivate(QString command, QString data)
                             if(row > curTable->nRows() - 1)
                                 addTableString();
                             activeIndex = tableCellIndex(curTable,row,base_colum,doc->lBlocks);
+//                            while(doc->lBlocks->at(activeIndex + 1)->type != BASECELL)
+//                            {
+//                                delete doc->lBlocks->takeAt(activeIndex + 1);
+//                                updateFragments(activeIndex,false);
+//                            }
                             position = 0;
 
                         }
@@ -4272,13 +6019,49 @@ bool EjTextControl::menuActivate(QString command, QString data)
             if(activeIndex > -1)
                 splitText(activeIndex,position);
             int i = 0;
+            //        str.clear();
+            //        for(i = 0; i < m_lClipboardBlocks.size(); i++)
+            //        {
+            //            cur_Block = m_lClipboardBlocks[i]->makeCopy();
+            //            switch (cur_Block->type) {
+            //            case TEXT:
+            //                str += static_cast<EjTextBlock*>(cur_Block)->text;
+            //                break;
+            //            case SPACE:
+            //                str += ' ';
+            //                break;
+            //            case ENTER:
+            //                str += '\n';
+            //            default:
+            //                break;
+            //            }
+
+            //        }
+            //        QString mimeStr = mimeData->text();
+            //            if(mimeData->html() == m_htmlBuffer)
             if(mimeData && mimeData->text() == m_htmlBuffer && !0)
             {
+                TableFragment *curFragment;
                 for(i = 0; i < m_clipboardDoc->lBlocks->count(); i++)
                 {
                     cur_Block = m_clipboardDoc->lBlocks->at(i)->makeCopy();
                     if(cur_Block->type == EXT_TABLE)
                     {
+//                        int select_index = -1;
+//                        for(int i = 0; i < ((EjTableBlock*)cur_Block)->lFragments.count(); i++)
+//                        {
+//                            if(((EjTableBlock*)cur_Block)->lFragments[i]->type == EjFragment::Select)
+//                            {
+//                                select_index = i;
+//                            }
+//                        }
+//                        if(select_index > -1)
+//                        {
+//                            curFragment = ((EjTableBlock*)cur_Block)->lFragments.takeAt(select_index);
+//                            delete curFragment;
+//                            curFragment = NULL;
+//                        }
+
                     }
                     doc->lBlocks->insert(activeIndex,cur_Block);
                     updateFragments(activeIndex,true);
@@ -4293,7 +6076,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
                     activeIndex--;
                     if(activeIndex > -1 && doc->lBlocks->at(activeIndex)->type==TEXT)
                     {
-						position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
+                        position = static_cast<EjTextBlock*>(doc->lBlocks->at(activeIndex))->text.size();
                     }
                 }
             }
@@ -4322,7 +6105,9 @@ bool EjTextControl::menuActivate(QString command, QString data)
                         if(str != "")
                             inputText(str);
                     }
+//
                 }
+                //            inputText(str);
             }
         }
         m_createPatchEnabled = true;
@@ -4336,6 +6121,7 @@ bool EjTextControl::menuActivate(QString command, QString data)
     }
     if(fragment) {
         updateTables(doc);
+        //        m_lFragments.append(fragment);
     }
     return res;
 }
@@ -4356,7 +6142,7 @@ QString EjTextControl::isTell()
     {
         if(activeIndex < 0 || doc->lBlocks->isEmpty())
             return str;
-		EjTableBlock *table = isTable(activeIndex);
+        EjTableBlock *table = isTable(activeIndex);
         if(table)
         {
             startSelectBlock = activeIndex;
@@ -4369,7 +6155,7 @@ QString EjTextControl::isTell()
                 endSelectBlock = startSelectBlock;
             startSelectPos = 0;
             if(doc->lBlocks->at(endSelectBlock)->type == TEXT)
-				endSelectPos = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(endSelectBlock))->text.length();
+                endSelectPos = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(endSelectBlock))->text.count();
         }
         else
         {
@@ -4380,9 +6166,9 @@ QString EjTextControl::isTell()
                 startSelectBlock--;
             startSelectPos = 0;
             endSelectBlock = startSelectBlock;
-            while(endSelectBlock + 1 < m_doc.lBlocks->count() && doc->lBlocks->at(endSelectBlock + 1)->type == TEXT)
+            while(endSelectBlock + 1 < doc->lBlocks->count() && doc->lBlocks->at(endSelectBlock + 1)->type == TEXT)
                 endSelectBlock++;
-			endSelectPos = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(endSelectBlock))->text.length();
+            endSelectPos = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(endSelectBlock))->text.count();
         }
 
     }
@@ -4392,22 +6178,23 @@ QString EjTextControl::isTell()
         if(exit)
             break;
         if(doc->lBlocks->at(i)->type == TEXT || doc->lBlocks->at(i)->type == BASECELL)
-			str += ((EjTextBlock*)doc->lBlocks->at(i))->text;
+            str += ((EjTextBlock*)doc->lBlocks->at(i))->text;
         else
         {
             res = false;
             if(doc->lBlocks->at(i)->type == SPACE || doc->lBlocks->at(i)->isProperty())
             {}
+//                str = "";
             else
                 break;
         }
-		if(str.length() > 50)
+        if(str.count() > 50)
         {
             res = false;
             break;
         }
         start = 0;
-		end = str.length();
+        end = str.count();
         if(i == startSelectBlock && startSelectPos < start)
             start = startSelectPos;
         if(i == endSelectBlock && endSelectPos < end)
@@ -4425,6 +6212,14 @@ QString EjTextControl::isTell()
             }
         }
     }
+//    if(res && m_selectMode == NO_SELECTED)
+//    {
+////        setSelectMode(SELECTED);
+//        m_startSelectBlock = startSelectBlock;
+//        m_endSelectBlock = endSelectBlock;
+//        m_startSelectPos = startSelectPos;
+//        m_endSelectPos = endSelectPos;
+//    }
     if(!res)
         str = "";
     return str;
@@ -4432,14 +6227,116 @@ QString EjTextControl::isTell()
 
 QList<EjFragmentBlock *> EjTextControl::getActualFragments(int block, EjTableBlock *cur_Table, int row, int colum)
 {
-	QList<EjFragmentBlock*> lActualFragments;
+    EjFragmentBlock *curFragment;
+    TableFragment *curTableFragment;
+    QList<EjFragmentBlock*> lActualFragments;
+    //    Param param;
+    QList<EjFragmentBlock*> *cur_lFragments = 0;
+    //    QList<quint8>lKeys;
+    //    BaseCellBlock *cur_baseCell;
+
+    bool bInsert;
+    bool bIsBaseCell = false;
+    ////    int start = 0;
+    ////    int row = 0;
+    ////    int colum = 0;
+    //    if(cur_Table)
+    //    {
+    //        cur_lFragments = (QList<EjFragmentBlock*> *)&cur_Table->lFragments;
+    //        bIsBaseCell = true;
+    ////        cellParams(cur_Table,block,row,colum);
+    ////        start = doc->lBlocks->indexOf(cur_shopList) +1;
+    ////        if(cur_shopList->nColums() > 0)
+    ////            row = (block - start) / cur_shopList->nColums();
+    ////        colum = block - start - row*cur_shopList->nColums();
+    //    }
+    //    else
+    //    {
+    //        cur_lFragments = &m_lFragments;
+    //    }
+    ////    if(!cur_lFragments)
+    ////        return mActualParams;
+
+    //    for(int j = 0; j < cur_lFragments.count(); j++)
+    //    {
+    //        curFragment = cur_lFragments.at(j);
+    //        bInsert = false;
+    //        if(bIsBaseCell)
+    //        {
+    //            curTableFragment = (TableFragment*)curFragment;
+    //           if(row >= curTableFragment->startRow() && row <= curTableFragment->endRow()
+    //              && colum >= curTableFragment->startColum() && colum <= curTableFragment->endColum() )
+    //           {
+    //               bInsert = true;
+    //           }
+    //        }
+    //        else if(block >= curFragment->startBlock && block <= curFragment->endBlock)
+    //        {
+    //            bInsert = true;
+    //        }
+    //        if(bInsert)
+    //        {
+    ////            lKeys = curFragment->mParams.keys();
+    ////            for(int jj=0; jj<lActualFragments.size(); jj++)
+    ////            {
+    ////                switch (lKeys[jj])
+    //                switch(curFragment->type) {
+    //                case EjFragment::DBold:
+    //                    removeFragments(&lActualFragments, EjFragment::Bold);
+    //                    break;
+    //                case EjFragment::DItalic:
+    //                    removeFragments(&lActualFragments, EjFragment::Italic);
+    ////                    mActualParams.remove(EjFragment::Italic);
+    //                    break;
+    //                case EjFragment::DUnderline:
+    //                    removeFragments(&lActualFragments, EjFragment::Underline);
+    ////                    mActualParams.remove(EjFragment::Underline);
+    //                    break;
+    //                default:
+    //                    removeFragments(&lActualFragments, curFragment->vid);
+    //                    lActualFragments.append(curFragment);
+    ////                    mActualParams.insert(lKeys[jj],curFragment->mParams.value(lKeys[jj]));
+    //                    break;
+    ////                }
+    //            }
+    //        }
+    //    }
     return lActualFragments;
 
 }
 
 QList<EjFragmentBlock *> EjTextControl::getSelectFragments()
 {
-	QList<EjFragmentBlock*> lActualFragments;
+    EjFragmentBlock *curFragment;
+    QList<EjFragmentBlock*> lActualFragments;
+    ////    QMap<quint8,Param> mActualParams;
+    ////    Param param;
+    //    //    QList<quint8>lKeys;
+
+    //    for(int j = 0; j < m_lFragments.count(); j++)
+    //    {
+    //        curFragment = m_lFragments.at(j);
+    //        if(m_startSelectBlock >= curFragment->startBlock && m_endSelectBlock <= curFragment->endBlock)
+    //        {
+    //            lActualFragments.append(curFragment);
+
+    ////            switch(curFragment->vid) {
+    ////                case EjFragment::DBold:
+    ////                    removeFragments(&lActualFragments, EjFragment::Bold);
+    ////                    break;
+    ////                case EjFragment::DItalic:
+    ////                    removeFragments(&lActualFragments, EjFragment::Italic);
+    ////                    break;
+    ////                case EjFragment::DUnderline:
+    ////                    removeFragments(&lActualFragments, EjFragment::Underline);
+    ////                    break;
+    ////                default:
+    ////                    removeFragments(&lActualFragments, curFragment->vid);
+    ////                    lActualFragments.append(curFragment);
+    ////                    break;
+    ////                }
+    //        }
+    //    }
     return lActualFragments;
 
 }
@@ -4454,15 +6351,164 @@ void EjTextControl::removeFragments(QList<EjFragmentBlock *> *l_fragments, int v
             i--;
         }
     }
+
 }
+
+//QMap<quint8, Param> EjTextControl::getActualParams(int block)
+//{
+//    EjFragment *curFragment;
+//    TableFragment *curTableFragment;
+//    QMap<quint8,Param> mActualParams;
+//    Param param;
+//    QList<EjFragment*> *cur_lFragments = 0;
+////    QList<quint8>lKeys;
+//    BaseCellBlock *cur_baseCell;
+//    EjTableBlock *cur_Table;
+//    bool bInsert;
+//    bool bIsBaseCell = false;
+//    int start = 0;
+//    int row = 0;
+//    int colum = 0;
+//    if(doc->lBlocks->at(block)->type == BASECELL)
+//    {
+//        cur_baseCell = (BaseCellBlock *)doc->lBlocks->at(block);
+//        cur_Table = cur_baseCell->parent;
+//        if(!cur_Table)
+//            return mActualParams;
+//        cur_lFragments = (QList<EjFragment*> *)&cur_Table->lFragments;
+//        bIsBaseCell = true;
+//        cellParams(cur_Table,block,row,colum);
+////        start = doc->lBlocks->indexOf(cur_shopList) +1;
+////        if(cur_shopList->nColums() > 0)
+////            row = (block - start) / cur_shopList->nColums();
+////        colum = block - start - row*cur_shopList->nColums();
+//    }
+//    else
+//    {
+//        cur_lFragments = m_lFragments;
+//    }
+////    if(!cur_lFragments)
+////        return mActualParams;
+
+//    for(int j = 0; j < cur_lFragments.size(); j++)
+//    {
+//        curFragment = cur_lFragments.at(j);
+//        bInsert = false;
+//        if(bIsBaseCell)
+//        {
+//            curTableFragment = (TableFragment*)curFragment;
+//           if(row >= curTableFragment->startRow() && row <= curTableFragment->endRow()
+//              && colum >= curTableFragment->startColum() && colum <= curTableFragment->endColum() )
+//           {
+//               bInsert = true;
+//           }
+//        }
+//        else if(block >= curFragment->startBlock && block <= curFragment->endBlock)
+//        {
+//            bInsert = true;
+//        }
+//        if(bInsert)
+//        {
+////            lKeys = curFragment->mParams.keys();
+////            for(int jj=0; jj<lKeys.size(); jj++)
+////            {
+////                switch (lKeys[jj])
+//                switch(curFragment->type) {
+//                case EjFragment::DBold:
+//                    mActualParams.remove(EjFragment::Bold);
+//                    break;
+//                case EjFragment::DItalic:
+//                    mActualParams.remove(EjFragment::Italic);
+//                    break;
+//                case EjFragment::DUnderline:
+//                    mActualParams.remove(EjFragment::Underline);
+//                    break;
+//                default:
+//                    mActualParams.insert(curFragment->type,param);
+////                    mActualParams.insert(lKeys[jj],curFragment->mParams.value(lKeys[jj]));
+//                    break;
+//                }
+////            }
+//        }
+//    }
+//    return mActualParams;
+//}
+
+//QMap<quint8, Param> EjTextControl::getSelectParams()
+//{
+//    EjFragment *curFragment;
+//    QMap<quint8,Param> mActualParams;
+//    Param param;
+////    QList<quint8>lKeys;
+
+//    for(int j = 0; j < lFragments.size(); j++)
+//    {
+//        curFragment = lFragments.at(j);
+//        if(m_startSelectBlock >= curFragment->startBlock && m_endSelectBlock <= curFragment->endBlock)
+//        {
+////            lKeys = curFragment->mParams.keys();
+////            for(int jj=0; jj<lKeys.size(); jj++)
+////            {
+////                switch (lKeys[jj])
+//                switch(curFragment->type){
+//                case EjFragment::DBold:
+//                    mActualParams.remove(EjFragment::Bold);
+//                    break;
+//                case EjFragment::DItalic:
+//                    mActualParams.remove(EjFragment::Italic);
+//                    break;
+//                case EjFragment::DUnderline:
+//                    mActualParams.remove(EjFragment::Underline);
+//                    break;
+//                default:
+//                    mActualParams.insert(curFragment->type,param);
+////                    mActualParams.insert(lKeys[jj],curFragment->mParams.value(lKeys[jj]));
+//                    break;
+//                }
+////            }
+//        }
+//    }
+//    return mActualParams;
+
+//}
 
 QFontMetrics EjTextControl::getDrawMetrics(int block)
 {
+    //    QMap<quint8,Param>
+
+    //    QFont drawFont = currentFont;
+    ////    m_isViewDoc = true;
+    ////    if(m_isViewDoc)
+    ////        drawFont.setPixelSize(12* 0.32);
+    //    QList<EjFragmentBlock*> lActualFragments = getActualFragments(block);
+    ////    QList<quint8> lKeys = mActualParams.keys();
+    //    for(int jj=0; jj<lActualFragments.count(); jj++)
+    //    {
+    //        switch (lActualFragments[jj]->vid) {
+    //        case EjFragment::Bold:
+    //            drawFont.setBold(true);
+    //            break;
+    //        case EjFragment::Italic:
+    //            drawFont.setItalic(true);
+    //            break;
+    //        case EjFragment::Underline:
+    //            drawFont.setUnderline(true);
+    //            break;
+    //        default:
+    //            break;
+    //        }
+
+    //    }
+    //    return QFontMetrics(drawFont);
     return QFontMetrics(getTextStyle(block)->m_font);
 }
 
 EjTextStyle *EjTextControl::getTextStyle(int block) const
 {
+    if (doc == nullptr){
+        return nullptr;
+    }
+
     return doc->currentTextStyle(block);
 }
 
@@ -4488,6 +6534,17 @@ EjTextStyle *EjTextControl::getSelectedTextStyle(int block) const
     else
     {
         resIndex = block;
+//        bool isEndText = false;
+//        if(resIndex > -1 && resIndex < doc->lBlocks->count() && doc->lBlocks->at(resIndex)->type == TEXT)
+//        {
+//            EjTextBlock *block = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(resIndex));
+//            if(block && block->text.count() <= position)
+//            {
+//                isEndText = true;
+//            }
+//        }
+//        if(!isEndText || block < endText(block))
+//            resIndex = startText(block);
     }
     return doc->currentTextStyle(resIndex);
 }
@@ -4503,7 +6560,7 @@ QRect EjTextControl::selectArea()
 {
     int x1,y1,x2,y2;
     EjBlock *cur_Block;
-    JString *cur_String = 0;
+    EjString *cur_String = 0;
     int index;
     x1=x2=y1=y2=0;
     if(m_startSelectBlock >= 0 && m_startSelectBlock < doc->lBlocks->count())
@@ -4519,12 +6576,12 @@ QRect EjTextControl::selectArea()
         }
         if(cur_Block->type == TEXT)
         {
-			QString txt = static_cast<EjTextBlock*>(cur_Block)->text;
+            QString txt = static_cast<EjTextBlock*>(cur_Block)->text;
             QFontMetrics drawMetrics = getDrawMetrics(m_startSelectBlock);
             if(m_startSelectPos > 0 && cur_Block->type == TEXT)
             {
                 txt = txt.left(m_startSelectPos);
-				x1 = x1 + drawMetrics.horizontalAdvance(txt);
+                x1 = x1 + drawMetrics.horizontalAdvance(txt);
             }
         }
     }
@@ -4535,12 +6592,12 @@ QRect EjTextControl::selectArea()
         y2 = cur_Block->y + m_contentY;
         if(cur_Block->type == TEXT)
         {
-			QString txt = static_cast<EjTextBlock*>(cur_Block)->text;
+            QString txt = static_cast<EjTextBlock*>(cur_Block)->text;
             QFontMetrics drawMetrics = getDrawMetrics(m_endSelectBlock);
             if(m_endSelectPos > 0 && cur_Block->type == TEXT)
             {
                 txt = txt.left(m_endSelectPos);
-				x2 = x2 + drawMetrics.horizontalAdvance(txt);
+                x2 = x2 + drawMetrics.horizontalAdvance(txt);
             }
         }
     }
@@ -4552,19 +6609,107 @@ QRect EjTextControl::selectArea()
 
 void EjTextControl::updateFragments(int index, bool is_add, bool posNotNul)
 {
+    EjFragmentBlock *curFragment;
+    int del_index;
+
+
+
+
+    //    foreach(EjTableBlock *curTable, *doc->lTables)
+    //    {
+    //        if(index > curTable->startBlock && index <= curTable->endBlock)
+    //        {
+    //            if(!is_add)
+    //            {
+    //                curTable->endBlock--;
+    //                curTable->countBlocks--;
+    //            }
+    //            else
+    //            {
+    //                curTable->endBlock++;
+    //                curTable->countBlocks++;
+    //            }
+
+    //        }
+    //        else if(index <= curTable->startBlock)
+    //        {
+    //            if(!is_add)
+    //            {
+    //                if(index < curTable->startBlock)
+    //                    curTable->startBlock--;
+    //                curTable->endBlock--;
+    //            }
+    //            else
+    //            {
+    //                curTable->endBlock++;
+    //                curTable->startBlock++;
+
+    //            }
+    //        }
+    //    }
+
+
+    //    for (int ii = 0; ii < m_lFragments.count(); ii++) {
+    //        curFragment = m_lFragments.at(ii);
+    //        if(!posNotNul)
+    //        {
+    //            if(curFragment->endBlock >= index)
+    //            {
+    //                if(is_add) curFragment->endBlock++;
+    //                else curFragment->endBlock--;
+    //            }
+    //            if(curFragment->startBlock >= index)
+    //            {
+    //                if(is_add) curFragment->startBlock++;
+    //                else curFragment->startBlock--;
+    //            }
+    //        }
+    //        else
+    //        {
+    //            if(curFragment->endBlock >= index)
+    //            {
+    //                if(is_add) curFragment->endBlock++;
+    //                //                    else curFragment->endBlock--;
+    //            }
+    //            if(curFragment->startBlock > index)
+    //            {
+    //                if(is_add) curFragment->startBlock++;
+    //                //                    else curFragment->startBlock--;
+    //            }
+    //        }
+    //        if(curFragment->endBlock == index && curFragment->startBlock == index)
+    //        {
+    //            curFragment = m_lFragments.takeAt(ii);
+    ////            del_index = doc->lBlocks->indexOf(curFragment);
+    //            if(doc->lBlocks->at(curFragment->startBlock)->type == FRAGMENT)
+    //                doc->lBlocks->takeAt(curFragment->startBlock);
+    //            else
+    //                qDebug()  << __FILE__ << __LINE__ << ": " << "Error for EjFragment!!!";
+    //            updateFragments(curFragment->startBlock,false);
+    ////            doc->lBlocks->removeOne(curFragment);
+    //            delete curFragment;
+    //            curFragment = 0;
+    //            ii = -1;
+    ////            ii--;
+    //        }
+    //        else curFragment->countBlocks = curFragment->endBlock - curFragment->startBlock;
+    //    }
+
 }
 
 void EjTextControl::blockOptimize()
 {
-	EjTextBlock *cur_textBlock;
-	QList<EjFragmentBlock*> lActualFragments;
-	QList<EjFragmentBlock*> lActualFragments2;
+    EjTextBlock *cur_textBlock;
+    //    QMap<quint8,Param> mActualParams;
+    //    QMap<quint8,Param> mActualParams2;
+    QList<EjFragmentBlock*> lActualFragments;
+    QList<EjFragmentBlock*> lActualFragments2;
 
     for(int i = 0; i < doc->lBlocks->count(); i++)
     {
         if(doc->lBlocks->at(i)->type == TEXT)
         {
-			cur_textBlock = (EjTextBlock*)doc->lBlocks->at(i);
+            cur_textBlock = (EjTextBlock*)doc->lBlocks->at(i);
             if(i != activeIndex && cur_textBlock->text == "")
             {
                 updateFragments(i,false);
@@ -4589,7 +6734,7 @@ void EjTextControl::blockOptimize()
                     m_endSelectBlock--;
                     //                    m_endSelectPos += cur_textBlock->text.size();
                 }
-				cur_textBlock->text += static_cast<EjTextBlock*>(doc->lBlocks->at(i+1))->text;
+                cur_textBlock->text += static_cast<EjTextBlock*>(doc->lBlocks->at(i+1))->text;
                 updateFragments(i+1,false);
                 doc->lBlocks->removeAt(i+1);
                 if(activeIndex > i+1) activeIndex--;
@@ -4604,28 +6749,149 @@ void EjTextControl::blockOptimize()
 
 void EjTextControl::fragmentOptimize(int vid)
 {
+    //    EjFragmentBlock *curFragment;
+    //    EjFragmentBlock *curFragment2;
+    ////    EjBlock *cur_Block;
+    ////    int vid2 = vid;
+    //    int index;
+    //    for(int i = 0; i < m_lFragments.count(); i++)
+    //    {
+    //        curFragment = m_lFragments.at(i);
+    //        if(curFragment->vid == vid)
+    //        {
+    ////            index = curFragment->startBlock - 1;
+    ////            while(index > -1 && doc->lBlocks->at(index))
+    //            for(int j = i + 1; j < m_lFragments.count(); j++)
+    //            {
+    //                curFragment2 = m_lFragments.at(j);
+    //                if(curFragment2->vid == vid)
+    //                {
+    //                    if(curFragment2->endBlock >= curFragment->startBlock && curFragment2->startBlock <= curFragment->endBlock)
+    //                    {
+    //                        if(curFragment->startBlock > curFragment2->startBlock)
+    //                        {
+    //                            curFragment = curFragment2;
+    //                            curFragment2 = m_lFragments.at(i);
+    //                            j = i;
+    ////                            curFragment->endBlock = curFragment2->endBlock;
+    //                        }
+    //                        if(curFragment->endBlock < curFragment2->endBlock)
+    //                            curFragment->endBlock = curFragment2->endBlock;
+    //                        curFragment->countBlocks = curFragment->endBlock - curFragment->startBlock;
+    //                        if(doc->lBlocks->at(curFragment2->startBlock)->type == FRAGMENT)
+    //                            doc->lBlocks->takeAt(curFragment2->startBlock);
+    //                        else
+    //                            qDebug()  << __FILE__ << __LINE__ << ": " << "Error for EjFragment!!!";
+    //                        updateFragments(curFragment2->startBlock,false);
+
+    //                        if(curFragment2->startBlock < m_startSelectBlock)
+    //                            m_startSelectBlock--;
+    //                        if(curFragment2->startBlock < m_endSelectBlock)
+    //                            m_endSelectBlock--;
+    //                        delete m_lFragments.takeAt(j);
+
+
+
+    //                        curFragment2 = 0;
+    //                        i--;
+    //                        break;
+    //                    }
+    //                }
+    //            }
+    //        }
+    //    }
+
 }
 
 void EjTextControl::fragmentDOptimize(int vid, int startBlock, int endBlock)
 {
+    //    EjFragmentBlock *curFragment;
+    //    EjFragmentBlock *curFragment2;
+    ////    EjBlock *cur_Block;
+    ////    int vid2 = vid;
+    //    int index;
+    //    for(int i = 0; i < m_lFragments.count(); i++)
+    //    {
+    //        curFragment = m_lFragments.at(i);
+    //        if(curFragment->vid == vid)
+    //        {
+    //            if(curFragment->startBlock >= startBlock && curFragment->startBlock <= endBlock)
+    //            {
+    //                if(doc->lBlocks->at(curFragment->startBlock)->type == FRAGMENT)
+    //                    doc->lBlocks->takeAt(curFragment->startBlock);
+    //                else
+    //                    qDebug()  << __FILE__ << __LINE__ << ": " << "Error for EjFragment!!!";
+    //                updateFragments(curFragment->startBlock,false);
+    //                if(curFragment->endBlock > endBlock)
+    //                {
+    //                  doc->lBlocks->insert(endBlock-1, curFragment);
+    //                  curFragment->startBlock = endBlock - 1;
+    //                  updateFragments(curFragment->startBlock,true);
+    //                }
+    //                else
+    //                {
+    //                    if(curFragment->startBlock < m_startSelectBlock)
+    //                        m_startSelectBlock--;
+    //                    if(curFragment->startBlock < m_endSelectBlock)
+    //                        m_endSelectBlock--;
+    //                    delete m_lFragments.takeAt(i);
+    //                }
+    //            }
+    //            else if(curFragment->startBlock < startBlock && curFragment->endBlock >= startBlock)
+    //            {
+    //                if(curFragment->endBlock > endBlock)
+    //                {
+    //                    curFragment2 = new EjFragmentBlock();
+    //                    curFragment2->vid = vid;
+    //                    doc->lBlocks->insert(endBlock + 1, curFragment2);
+    //                    updateFragments(endBlock + 1, true);
+    //                    curFragment2->startBlock = endBlock + 1;
+    //                    curFragment2->endBlock = curFragment->endBlock;
+    //                    curFragment2->countBlocks = curFragment2->endBlock - curFragment2->startBlock;
+    //                    m_lFragments.append(curFragment2);
+    //                }
+    //                curFragment->endBlock = startBlock-1;
+    //                curFragment->countBlocks = curFragment->endBlock - curFragment->startBlock;
+    //                if(curFragment->endBlock - curFragment->startBlock < 1)
+    //                {
+    //                    if(doc->lBlocks->at(curFragment->startBlock)->type == FRAGMENT)
+    //                        doc->lBlocks->takeAt(curFragment->startBlock);
+    //                    else
+    //                        qDebug()  << __FILE__ << __LINE__ << ": " << "Error for EjFragment!!!";
+    //                    updateFragments(curFragment->startBlock,false);
+
+    //                    if(curFragment->startBlock < m_startSelectBlock)
+    //                        m_startSelectBlock--;
+    //                    if(curFragment->startBlock < m_endSelectBlock)
+    //                        m_endSelectBlock--;
+    //                    delete m_lFragments.takeAt(i);
+    //                }
+
+    //            }
+    //        }
+    //    }
+    //    blockOptimize();
+
 }
 
 void EjTextControl::calcTables()
 {
     EjCalculator calculator(doc);
     calculator.calcTables();
+//    calculator.updateFormulas(false);
 }
 
 void EjTextControl::moveTable(int dX)
 {
     if(m_isViewDoc)
         return;
-	EjTableBlock *table = isTable(activeIndex);
-	EjCellBlock *curCellBlock;
+    EjTableBlock *table = isTable(activeIndex);
+    EjCellBlock *curCellBlock;
 
 
     if(table)
     {
+        //        int start = doc->lBlocks->indexOf(table) + 1;
         int start = table->startCell();
         int x_bak = doc->lBlocks->at(start)->x;
         int x = x_bak + dX / scaleSize;
@@ -4637,6 +6903,7 @@ void EjTextControl::moveTable(int dX)
             x = (m_width - rightColontitul) * k_scale - table->width ;
         }
         qDebug() << "x= " << x << " " << doc->lBlocks->at(start)->x;
+        //         doc->lBlocks->at(start)->x  = x;
         dX = (x - x_bak);
         table->x += dX;
         for(int j = start; j <= table->endBlock(); j++)
@@ -4644,27 +6911,96 @@ void EjTextControl::moveTable(int dX)
             doc->lBlocks->at(j)->x += dX;
             if(doc->lBlocks->at(j)->type == BASECELL)
             {
-				curCellBlock = static_cast<EjCellBlock*>(doc->lBlocks->at(j));
+                curCellBlock = static_cast<EjCellBlock*>(doc->lBlocks->at(j));
+//                curCellBlock->txt_x += dX;
             }
         }
+        //        calcStrings();
     }
 }
 
+
+QList<EjBlock *> *EjTextControl::getBlocks()
+{
+    if (doc == nullptr){
+        static QList<EjBlock *> empty;
+        return &empty;
+    }
+    return doc->lBlocks;
+}
+
+
+QList<EjString *> *EjTextControl::getStrings()
+{
+    if (doc == nullptr){
+        static QList<EjString *> empty;
+
+        return &empty;
+    }
+
+    return doc->lStrings;
+}
+
+
+QList<EjPage *> *EjTextControl::getPages()
+{
+    if (doc == nullptr){
+        static QList<EjPage *> empty;
+
+        return &empty;
+    }
+
+    return doc->lPages;
+}
+
+QList<EjBaseStyle *> *EjTextControl::getStyles()
+{
+    if (doc == nullptr){
+        static QList<EjBaseStyle *> empty;
+
+        return &empty;
+    }
+
+    return doc->lStyles;
+}
+
+
+QList<EjTableBlock *> *EjTextControl::getTables()
+{
+    if (doc == nullptr){
+        static QList<EjTableBlock *> empty;
+
+        return &empty;
+    }
+
+    return doc->lTables;
+}
 
 
 int EjTextControl::getBaseWidth(int index, QFontMetrics &drawMetric)
 {
     int res = 0;
-	EjTextBlock *cur_txtBlock;
+    EjTextBlock *cur_txtBlock;
+    ContactBlock *cur_cntBlock;
+//    ImageBlock_old *cur_imgBlock;
 
     switch(doc->lBlocks->at(index)->type)
     {
     case TEXT:
         drawMetric = getDrawMetrics(index);
-		cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(index);
+        cur_txtBlock = (EjTextBlock*)doc->lBlocks->at(index);
         if(cur_txtBlock)
         {
-			res = drawMetric.horizontalAdvance(cur_txtBlock->text);
+            res = drawMetric.horizontalAdvance(cur_txtBlock->text);
+        }
+        break;
+    case CONTACT:
+        drawMetric = getDrawMetrics(index);
+        cur_cntBlock = (ContactBlock*)doc->lBlocks->at(index);
+        if(cur_cntBlock)
+        {
+            res = drawMetric.horizontalAdvance(cur_cntBlock->name);
+
         }
         break;
     case SPACE:
@@ -4675,40 +7011,78 @@ int EjTextControl::getBaseWidth(int index, QFontMetrics &drawMetric)
 
 }
 
+
 void EjTextControl::calc(int index, bool force)
 {
+
+    if (doc == nullptr){
+        return;
+    }
+
     int index_string = 0;
     int index_page = 0;
     EjBlock *cur_Block;
-    Page *cur_page;
-    JString *cur_string;
-	EjCalcParams calcParams;
+    EjPage *cur_page;
+    EjString *cur_string;
+
+    EjCalcParams calcParams;
     calcParams.viewScale = scaleSize;
 
     int right_pos = 0;
+    int left_pos = 0;
+    int back_type = 0;
+
     bool new_string = false;
     double k_scale;
-
+    int deltaX = 0;
     int x; // + metric.height() / 1.2;
+
+    m_defaultOrientation = doc->attributes()->getDocLayout()->docOrientation();
+    m_defaultPageWidth = doc->attributes()->getDocLayout()->docWidth();
+    m_defaultPageHeight = doc->attributes()->getDocLayout()->docHeight();
+    m_defaultLeftMarging = doc->attributes()->getDocMargings()->left();
+    m_defaultTopMarging = doc->attributes()->getDocMargings()->top();
+    m_defaultRightMarging = doc->attributes()->getDocMargings()->right();
+    m_defaultBottomMarging = doc->attributes()->getDocMargings()->bottom();
+
+    for (EjPage* page: *doc->lPages){
+        page->width = m_defaultPageWidth;
+        page->height = m_defaultPageHeight;
+        page->orientation = m_defaultOrientation;
+        page->leftMarging = m_defaultLeftMarging;
+        page->topMarging = m_defaultTopMarging;
+        page->rightMarging = m_defaultRightMarging;
+        page->bottomMarging = m_defaultBottomMarging;
+    }
 
     if(m_calcIndex > doc->lBlocks->count() - 1)
         m_calcIndex = doc->lBlocks->count() - 1;
     if(doc->lPages->isEmpty())
     {
-        cur_page = new Page;
+        cur_page = new EjPage;
         cur_page->width = m_defaultPageWidth;
         cur_page->height = m_defaultPageHeight;
+        cur_page->orientation = m_defaultOrientation;
+        //        cur_page->y = 50;
         doc->lPages->append(cur_page);
     }
     else cur_page = doc->lPages->at(0);
 
     if(doc->lStrings->isEmpty())
     {
-        cur_string = new JString;
-        if(m_isViewDoc)
-            cur_string->y = cur_page->topMarging;
-        else
+        cur_string = new EjString;
+        if(m_isViewDoc){
+            if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+                cur_string->y = cur_page->topMarging;
+            }
+            else{
+                cur_string->y = cur_page->leftMarging;
+            }
+        }
+        else{
+            //            cur_string->y = topColontitul  * k_scale / scaleSize * 0.236; // + metric.height() / 1.2;
             cur_string->y = 0; // + metric.height() / 1.2;
+        }
         doc->lStrings->append(cur_string);
     }
     else {
@@ -4724,10 +7098,12 @@ void EjTextControl::calc(int index, bool force)
         }
     }
 
+//    foreach (EjPage *page, doc->lPages) {
     for (int i = 0; i < doc->lPages->count(); i++) {
-        Page *page = doc->lPages->at(i);
+        EjPage *page = doc->lPages->at(i);
         if(cur_string->y > page->y && cur_string->y < page->y + page->height) {
             cur_page = page;
+//            index_page = doc->lPages->indexOf(cur_page);
             index_page = i;
 
         }
@@ -4735,29 +7111,42 @@ void EjTextControl::calc(int index, bool force)
             break;
         if(force)
             page->flag_redraw = true;
+        //        cur_page->width = 20500;
     }
+
+    int baseY = 0;
 
     if(m_isViewDoc) {
         k_scale = scaleSize;
-        right_pos = (cur_page->width - cur_page->rightMarging + leftColontitul );
+         right_pos = 0;
+        if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+            right_pos = (cur_page->width - cur_page->rightMarging + leftColontitul );
+            left_pos = leftColontitul + cur_page->leftMarging;
+            baseY = m_defaultTopMarging;
+        }
+        else{
+            right_pos = (cur_page->height - cur_page->topMarging + leftColontitul );
+            left_pos = leftColontitul + cur_page->bottomMarging;
+            baseY = m_defaultLeftMarging;
+        }
+
     }
     else {
         k_scale = 0.0423333;  //23.622; // 1/4.23333*100
-        right_pos = m_width * 0.236  * k_scale / scaleSize - rightColontitul;
+         right_pos = m_width * 0.236  * k_scale / scaleSize - rightColontitul;
+        left_pos = leftColontitul;
     }
     if(force) {
+        //        fragmentOptimize();
+        //        blockOptimize();
     }
 
-	int baseY = 0;
-	if(index_string > 0)
-		baseY = cur_string->y;
-    if(m_isViewDoc)
-        x = leftColontitul + cur_page->leftMarging;
-    else
-        x = leftColontitul;
+    x = left_pos;
     cur_page->x = leftColontitul;
     if(force)
         cur_page->flag_redraw = true;
+    //    cur_page->x =  cur_page->x = leftColontitul * scaleSize * (m_width - leftColontitul / 100 - rightColontitul / 100) / m_width;
+    //    qDebug() << "baseY: " << baseY << doc->lBlocks->count();
 
     if(cur_string == doc->lStrings->at(0)) {
         index = 0;
@@ -4776,6 +7165,7 @@ void EjTextControl::calc(int index, bool force)
                 index = doc->lBlocks->count() - 1;
         }
     }
+
     calcParams.viewScale = k_scale;
     calcParams.leftColontitul = x; //leftColontitul;
     calcParams.rightPosition = right_pos;
@@ -4802,19 +7192,20 @@ void EjTextControl::calc(int index, bool force)
         cur_Block = doc->lBlocks->at(i);
         if(force)
             cur_Block->flag_redraw = true;
+        //        continue;
+
         calcParams.baseX = x;
         if(cur_Block->type == ENTER)
         {
             cur_Block->descent = calcParams.textStyle->m_fontMetrics.descent() * 100 * 0.347;
             cur_Block->ascent = calcParams.textStyle->m_fontMetrics.ascent() * 100 * 0.347;
-            if(m_isViewDoc)
-                x = leftColontitul + cur_page->leftMarging;
-            else
-                x = leftColontitul;
+            x = left_pos;
             cur_Block->x = x;
+//            if(indexBack != i)
             {
                 new_string = true;
                 indexBack = i;
+//                i--;
             }
         }
         else
@@ -4823,9 +7214,8 @@ void EjTextControl::calc(int index, bool force)
             cur_Block->calcBlock(i, &calcParams);
         }
 
-        if((x > leftColontitul + (m_isViewDoc ? cur_page->leftMarging : 0))
-                && x + cur_Block->width > right_pos)
-        {
+        if(x > left_pos && x + cur_Block->width > right_pos)
+         {
             new_string = true;
         }
         else
@@ -4839,6 +7229,15 @@ void EjTextControl::calc(int index, bool force)
 
             calcParams.control->calcString(cur_string, cur_page, &calcParams);
             calcParams.control->addString(&calcParams, indexBack);
+            cur_page = doc->lPages->at(calcParams.index_page);
+            if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+                right_pos = (cur_page->width - cur_page->rightMarging + leftColontitul );
+                left_pos = leftColontitul + cur_page->leftMarging;
+            }
+            else{
+                right_pos = (cur_page->height - cur_page->topMarging + leftColontitul );
+                left_pos = leftColontitul + cur_page->bottomMarging;
+            }
             index_string = calcParams.index_string;
             cur_string =  doc->lStrings->at(index_string);
             baseY = calcParams.baseY;
@@ -4850,26 +7249,62 @@ void EjTextControl::calc(int index, bool force)
         }
 
         cur_string->endBlock = i;
-		if(cur_string->endBlock - cur_string->startBlock > 2000)
+        if(cur_string->endBlock - cur_string->startBlock > 1000)
         {
             qWarning() << "Error for string" << __FILE__ << __LINE__ << ": " << doc->lBlocks->count() << i << doc->lStrings->count() << index_string << cur_string->startBlock << cur_string->endBlock;
 
         }
+
+        if(i < doc->lBlocks->count())
+            back_type = cur_Block->type;
+
     }
+    //    qWarning() << "Time for calc 1" << __FILE__ << __LINE__ << ": " << QDateTime::currentDateTime().msecsTo(dt) << doc->lBlocks->count() << index << force;
+
     cur_string = doc->lStrings->at(index_string);
     calcString(cur_string, cur_page, &calcParams);
-    if(m_isViewDoc && cur_string->y > cur_page->y + (cur_page->height - cur_page->bottomMarging))
+    //            cur_string->y = baseY;
+    if(m_isViewDoc)
     {
-        baseY += (cur_page->bottomMarging) + 1500;
-        cur_page = new Page;
-        cur_page->width = m_defaultPageWidth;
-        cur_page->height = m_defaultPageHeight;
-        cur_page->y = baseY;
-        doc->lPages->append(cur_page);
-        baseY += (cur_page->topMarging );
-        for(int i = cur_string->startBlock; i <= cur_string->endBlock; i++)
-        {
-            doc->lBlocks->at(i)->y = baseY;
+        int pageWorkHeight = 0;
+        if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+            pageWorkHeight = cur_page->GetNormalHeight() - cur_page->bottomMarging;
+        }
+        else {
+            pageWorkHeight = cur_page->GetNormalHeight() - cur_page->rightMarging;
+        }
+
+        if (cur_string->y > cur_page->y + pageWorkHeight){
+            cur_page = new EjPage;
+            cur_page->width = m_defaultPageWidth;
+            cur_page->height = m_defaultPageHeight;
+            cur_page->orientation = m_defaultOrientation;
+
+            if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+                right_pos = (cur_page->width - cur_page->rightMarging + leftColontitul );
+                left_pos = leftColontitul + cur_page->leftMarging;
+                baseY += (cur_page->bottomMarging) + 1500;
+            }
+            else{
+                right_pos = (cur_page->height - cur_page->topMarging + leftColontitul );
+                left_pos = leftColontitul + cur_page->bottomMarging;
+                baseY += (cur_page->rightMarging) + 1500;
+            }
+
+
+            cur_page->y = baseY;
+            doc->lPages->append(cur_page);
+            if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+                baseY += (cur_page->topMarging );
+            }
+            else{
+                baseY += (cur_page->leftMarging );
+            }
+            for(int i = cur_string->startBlock; i <= cur_string->endBlock; i++)
+            {
+                //            doc->lBlocks->at(i)->y = baseY + cur_string->height - doc->lBlocks->at(i)->height;
+                doc->lBlocks->at(i)->y = baseY;
+            }
         }
     }
     index_string++;
@@ -4877,12 +7312,13 @@ void EjTextControl::calc(int index, bool force)
         delete doc->lStrings->at(index_string);
         doc->lStrings->removeAt(index_string);
     }
+    //    calcStrings();
     if(m_isViewDoc)
     {
         cur_page = doc->lPages->last();
-        if(m_height != cur_page->y + cur_page->height)
+        if(m_height != cur_page->y + cur_page->GetNormalHeight())
         {
-            m_height = cur_page->y + cur_page->height;
+            m_height = cur_page->y + cur_page->GetNormalHeight();
             emit controlHeightChanged();
         }
     }
@@ -4892,39 +7328,327 @@ void EjTextControl::calc(int index, bool force)
             m_height = baseY + cur_string->height + bottomColontitul * k_scale / scaleSize * 0.236;
             if(!doc->lBlocks->isEmpty() && doc->lBlocks->last()->type == ENTER)
             {
-				m_height += cur_string->height;
+                m_height += cur_string->height;//calcParams.textStyle->m_fontMetrics.height() * 100 * 0.347 * 1.5;
             }
+            //        m_height = baseY + bottomColontitul * k_scale / scaleSize * 23.6;
             emit controlHeightChanged();
         }
+
 }
 
+
+QQuickItem *EjTextControl::getItem(EjBlock *cur_Block, EjCalcParams *calcParams, QQuickItem *parent)
+{
+    return NULL;
+//    QQuickItem *curItem = NULL;
+//    switch(cur_Block->type)
+//    {
+//    case NUM_STYLE:
+//        //                    if(((EjNumStyleBlock *)cur_block)->style && ((EjNumStyleBlock *)cur_block)->style->type == TEXT_STYLE)
+//        //                    {
+//        //                        curTextStyle = (EjTextStyle*)((EjNumStyleBlock *)cur_block)->style;
+//        //                    }
+//        //                    else
+//        //                    {
+//        //                        foreach(EjBaseStyle *style,*plStyles)
+//        //                        {
+//        //                            if(style->num == ((EjNumStyleBlock *)cur_block)->num)
+//        //                            {
+//        //                                if(style->type == TEXT_STYLE)
+//        //                                {
+//        //                                    curTextStyle = (EjTextStyle*)style;
+//        //                                    break;
+//        //                                }
+
+//        //                            }
+
+//        //                        }
+//        //                    }
+//        if(((EjNumStyleBlock *)cur_Block)->style->type == TEXT_STYLE)
+//            calcParams->textStyle = getTextStyle(doc->lBlocks->indexOf(cur_Block));
+//        break;
+//    case TEXT:
+//    {
+//        //                    if(m_statusMode == SELECTED)
+//        //                    if(curTextStyle->m_brushColor.rgba() != 0 || (m_statusMode == SELECTED && i >= m_startSelectBlock && i <= m_endSelectBlock))
+//        {
+
+//            curItem = new ItemSelectedBlock(parent);
+//            EjTextBlock *cur_txtBlock = (EjTextBlock*)cur_Block;
+//            int x_select = 0;
+//            int x_end_select = cur_Block->width * m_scaleSize + 1;
+
+//            //                        curItem->setY(cur_block->string->y * m_scaleSize + m_contentY);
+//            curItem->setY(cur_Block->y * m_scaleSize + m_contentY);
+//            //                        curItem->setWidth(cur_block->width * m_scaleSize);
+//            //                        curItem->setX(cur_block->x * m_scaleSize + m_contentX);
+//            if(i == m_startSelectBlock && (cur_Block->type == TEXT || cur_Block->type == BASECELL) && m_startSelectPos > 0)
+//            {
+//                x_select = calcParams->textStyle->m_fontMetrics.width(cur_txtBlock->text.left(m_startSelectPos));
+//                x_select *= 100 * 0.347 * m_scaleSize;
+//                //                            curItem->setWidth(cur_block->width * m_scaleSize - x_select);
+//            }
+//            if(i == m_endSelectBlock && (cur_Block->type == TEXT || cur_Block->type == BASECELL) )
+//            {
+//                //                            QFontMetrics fm(drawFont);
+//                x_end_select = cur_Block.width(cur_txtBlock->text.left(m_endSelectPos));
+//                x_end_select *= 100 * 0.347 * m_scaleSize;
+//            }
+//            curItem->setX(cur_Block->x * m_scaleSize + x_select + m_contentX);
+//            curItem->setWidth(x_end_select - x_select);
+
+//            ((ItemSelectedBlock*)curItem)->pBlock = cur_block;
+//            if(i >= m_startSelectBlock && i <= m_endSelectBlock) {
+//                curItem->setHeight(cur_block->string->height * m_scaleSize);
+//                ((ItemBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//            }
+//            else {
+//                curItem->setHeight(cur_Block.height() * 100 * 0.347 * m_scaleSize);
+//                ((ItemBlock*)curItem)->m_backGround = curTextStyle->m_brushColor;
+//            }
+//            ((ItemSelectedBlock*)curItem)->m_strikeOut = curTextStyle->m_font.strikeOut();
+//            ((ItemSelectedBlock*)curItem)->m_underLine = curTextStyle->m_font.underline();
+//            ((ItemSelectedBlock*)curItem)->m_lineColor = curTextStyle->m_fontColor;
+//            //                        qWarning() << "ItemSelectedBlock" << cur_block->height << cur_block->width;
+//            //                        ((ItemSelectedBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//        }
+//        curItem = new ItemText(((EjTextBlock*)cur_Block)->text, curTextStyle->m_font, curTextStyle->m_fontColor, cur_Block->width / (100 * 0.347),this);
+//        //                    curItem = new ItemText(((EjTextBlock*)cur_block)->text, drawFont, Qt::black, cur_block->width / (100 * 0.347),this);
+//        //                    if(m_statusMode == SELECTED)
+//        //                    {
+//        //                       ((ItemText*)curItem)->m_backGround = QColor("#bbdcec");
+//        //                    }
+//        ((ItemText*)curItem)->pBlock = cur_Block;
+//        //                    curItem->setScale(35.3 * m_scaleSize);
+//        curItem->setX(cur_Block->x * m_scaleSize + m_contentX);
+//        curItem->setY(cur_Block->y * m_scaleSize + m_contentY);
+//        //                    curItem->setHeight(cur_block->height);
+//        //                    curItem->setWidth(cur_block->width);
+//        curItem->setHeight(0);
+//        curItem->setWidth(0);
+//        curItem->setScale(m_scaleSize*100*0.347);
+//        //                    curItem->setClip(true);
+//        //                    k = sizeof(*curItem);
+//        //                    k = sizeof(*testItem);
+//    }
+//        break;
+//    case BASECELL:
+//    {
+//        BaseCellBlock *cur_cell = (BaseCellBlock*)cur_block;
+//        if(cur_cell->parent)
+//        {
+//            cellParams(cur_cell->parent,i,row,colum);
+//        }
+//        else continue;
+
+//        curItem = NULL;
+//        if(cur_cell->vid == BaseCellBlock::CHECK && cur_cell->width > 0 && cur_Block->height > 0)
+//        {
+//            if(!m_check_texture)
+//            {
+//                m_check_texture = window()->createTextureFromImage(image_check);
+
+//            }
+//            curItem = new ItemCheck(((BaseCellBlock*)cur_Block)->parent->spacing, m_check_texture, this);
+//            ((ItemCheck*)curItem)->pBlock = cur_Block;
+//            ((ItemCheck*)curItem)->m_viewScale = m_scaleSize;
+//            curItem->setX(cur_Block->x * m_scaleSize + m_contentX);
+//            curItem->setY(cur_Block->y * m_scaleSize + m_contentY);
+//            curItem->setHeight(cur_Block->height * m_scaleSize);
+//            curItem->setWidth(cur_Block->width * m_scaleSize);
+//            if(cur_cell->value > 0 )
+//            {
+//                ((ItemCheck*)curItem)->setIsChecked(true);
+//            }
+//            else
+//                ((ItemCheck*)curItem)->setIsChecked(false);
+//            //                        curItem->update();
+//            if(cur_cell->parent->vid == EjTableBlock::CLEANTABLE)
+//                ((ItemCheck*)curItem)->isAllBorders = true;
+//            else {
+//                if(row == 0)
+//                    ((ItemCheck*)curItem)->isTopBorder = true;
+//                ((ItemCheck*)curItem)->isBottomBorder = true;
+//            }
+//        }
+//        else
+//        {
+//            curItem = new ItemCell(((BaseCellBlock*)cur_Block)->parent->spacing, ((BaseCellBlock*)cur_Block)->text, drawFont, Qt::black, ((BaseCellBlock*)cur_Block)->txtWidth / (100 * 0.347), this);
+//            //                        curItem = new ItemCell(0, ((BaseCellBlock*)cur_block)->text, drawFont, Qt::black, ((BaseCellBlock*)cur_block)->txtWidth / (100 * 0.347), this);
+//            ((ItemCell*)curItem)->pBlock = cur_Block;
+//            ((ItemCell*)curItem)->m_viewScale = m_scaleSize;
+
+//            //                        curItem->setX(cur_block->x * m_scaleSize + m_contentX);
+//            //                        curItem->setY(cur_block->y * m_scaleSize + m_contentY);
+//            curItem->setHeight(cur_Block->height * m_scaleSize);
+//            curItem->setWidth(cur_Block->width * m_scaleSize);
+//            //                        curItem->setHeight(0);
+//            //                        curItem->setWidth(0);
+//            //                        curItem->setScale(m_scaleSize*100*0.347);
+//            curItem->setX(cur_Block->x * m_scaleSize + m_contentX);
+//            curItem->setY(cur_Block->y * m_scaleSize + m_contentY);
+//            //                        curItem->setHeight(cur_block->height);
+//            //                        curItem->setWidth(cur_block->width);
+//            //                        curItem->setHeight(0);
+//            //                        curItem->setWidth(0);
+//            //                        curItem->setScale(m_scaleSize*100*0.347);
+
+//            if(cur_cell->parent->vid == EjTableBlock::CLEANTABLE)
+//                ((ItemCell*)curItem)->isAllBorders = true;
+//            else {
+//                if(row == 0)
+//                    ((ItemCell*)curItem)->isTopBorder = true;
+//                ((ItemCell*)curItem)->isBottomBorder = true;
+//            }
+//        }
+//        //                    if(row % 2 == 0 && m_statusMode != EDIT_CELL)
+//        //                    {
+//        //                        ((ItemBlock *)curItem)->m_backGround = QColor(0,0,0,15);
+//        //                        //                        curItem->update();
+//        //                    }
+//    }
+//        break;
+//        //    case IMAGE:
+//        //    {
+//        //        ImageBlock_old *cur_imageBlock = (ImageBlock_old*)cur_Block;
+//        //        if(cur_imageBlock)
+//        //        {
+//        ////                        QString path = ext_storage->pathPic + ext_storage->m_login + "/";
+//        ////                        QString picname = QString(cur_imageBlock->name.toHex()); //name.toString();  //.remove(QChar('-')).remove(QChar('{')).remove(QChar('}')) + ".jpeg";
+//        ////                        QUrl url = path+picname + "s" + ".jpeg";
+
+
+
+//        ////                        curItem = new ItemImage(((ImageBlock_old*)cur_block)->small_image,this);
+//        ////                        ((ItemImage*)curItem)->pBlock = cur_block;
+//        ////                        ((ItemImage*)curItem)->m_viewScale = m_scaleSize;
+//        ////                        curItem->setX(cur_block->x * m_scaleSize + m_contentX);
+//        ////                        curItem->setY(cur_block->y * m_scaleSize + m_contentY);
+//        ////                        curItem->setHeight(cur_block->height * m_scaleSize);
+//        ////                        curItem->setWidth(cur_block->width * m_scaleSize);
+
+//        //        }
+//        //    }
+//        //        break;
+//    case SPACE:
+//        if(curTextStyle->m_brushColor.rgba() != 0 || (m_statusMode == SELECTED && i >= m_startSelectBlock && i <= m_endSelectBlock) || curTextStyle->m_font.underline() || curTextStyle->m_font.strikeOut() )
+//        {
+//            curItem = new ItemSelectedBlock(parent);
+//            if(i >= m_startSelectBlock && i <= m_endSelectBlock) {
+//                curItem->setHeight(cur_Block->string->height * m_scaleSize);
+//                //                            ((ItemBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//            }
+//            else {
+//                curItem->setHeight(fm.height() * 100 * 0.347 * m_scaleSize);
+//                //                            ((ItemBlock*)curItem)->m_backGround = curTextStyle->m_brushColor;
+//            }
+//            curItem->setY(cur_Block->y * m_scaleSize + m_contentY);
+//            curItem->setWidth(cur_Block->width * m_scaleSize);
+//            curItem->setX(cur_Block->x * m_scaleSize + m_contentX);
+//            ((ItemSelectedBlock*)curItem)->pBlock = cur_Block;
+//            qWarning() << "ItemSelectedBlock" << cur_Block->height << cur_Block->width;
+//            ((ItemSelectedBlock*)curItem)->m_strikeOut = curTextStyle->m_font.strikeOut();
+//            ((ItemSelectedBlock*)curItem)->m_underLine = curTextStyle->m_font.underline();
+//            ((ItemSelectedBlock*)curItem)->m_lineColor = curTextStyle->m_fontColor;
+//            //                        ((ItemSelectedBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//        }
+//        break;
+//    default: {
+//        bool bFind = false;
+
+//        if(ext_plugins.contains(cur_Block->type)) {
+//            JotInterface *iPlug = ext_plugins.value(cur_Block->type);
+//            curItem = iPlug->newItem(m_scaleSize, cur_Block, parent);
+//            //                        ((ItemImage*)curItem)->pBlock = cur_block;
+//            curItem->setX(cur_Block->x * m_scaleSize + m_contentX);
+//            curItem->setY(cur_Block->y * m_scaleSize + m_contentY);
+//            //                            curItem->setHeight(0);
+//            //                            curItem->setWidth(0);
+
+//            //                            curItem->setHeight(cur_block->height);
+//            //                            curItem->setWidth(cur_block->width);
+//            //                            curItem->setScale(0.99);
+//            //                            curItem->setScale(m_scaleSize*100*0.347);
+//            //                            curItem->setV(m_scaleSize);
+
+//            bFind = true;
+
+
+//        }
+//        //                    if(!bFind && m_statusMode == SELECTED && i >= m_startSelectBlock && i <= m_endSelectBlock)
+//        //                    if(!bFind && (m_statusMode == SELECTED || curTextStyle->m_fontColor.rgba() != 0 ))
+//        //                    {
+//        //                        curItem = new ItemSelectedBlock(this);
+//        //                        if(m_statusMode == SELECTED) {
+//        //                            curItem->setHeight(cur_block->string->height * m_scaleSize);
+//        //                            ((ItemBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//        //                        }
+//        //                        else {
+//        ////                            curItem->setHeight(fm.height() * 100 * 0.347 * m_scaleSize);
+//        ////                            ((ItemBlock*)curItem)->m_backGround = curTextStyle->m_brushColor;
+//        //                            curItem->setHeight(cur_block->string->height * m_scaleSize);
+//        //                            ((ItemBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//        //                        }
+//        //                        curItem->setY(cur_block->y * m_scaleSize + m_contentY);
+//        //                        curItem->setWidth(cur_block->width * m_scaleSize);
+//        //                        curItem->setX(cur_block->x * m_scaleSize + m_contentX);
+//        //                        ((ItemSelectedBlock*)curItem)->pBlock = cur_block;
+//        //                        qWarning() << "ItemSelectedBlock" << cur_block->height << cur_block->width;
+//        ////                        ((ItemSelectedBlock*)curItem)->m_backGround = QColor("#bbdcec");
+//        //                    }
+
+//    }
+//        break;
+
+//    }
+//    return curItem;
+
+}
 
 void EjTextControl::timerEvent(QTimerEvent *event)
 {
     Q_UNUSED(event)
+
     killTimer(m_timerId);
+    createPatch();
+
 }
 
-void EjTextControl::calcString(JString *string, Page *page, EjCalcParams *calcParams)
+//int &baseY, int interval, int deltaX
+
+void EjTextControl::calcString(EjString *string, EjPage *page, EjCalcParams *calcParams)
 {
     if(doc->lBlocks->isEmpty()) return;
     int deltaX = 0;
-	if(calcParams->paragraphStyle->m_align & EjParagraphStyle::AlignLeft)
+    if(calcParams->paragraphStyle->m_align & EjParagraphStyle::AlignLeft)
         deltaX = 0;
-	if(calcParams->paragraphStyle->m_align & EjParagraphStyle::AlignRight)
+    if(calcParams->paragraphStyle->m_align & EjParagraphStyle::AlignRight)
     {
-        if(calcParams->isViewDoc)
-            deltaX = calcParams->rightPosition - string->width - page->leftMarging - calcParams->leftColontitul;
+        if(calcParams->isViewDoc){
+            if (page->orientation == EjDocLayout::ORN_PORTRAIT){
+                // deltaX = calcParams->rightPosition; // - string->width - page->leftMarging; // - calcParams->leftColontitul;
+                deltaX = calcParams->rightPosition - string->width - calcParams->leftColontitul; // - page->rightMarging;
+            }
+            else{
+                deltaX = calcParams->rightPosition - string->width - calcParams->leftColontitul; // - calcParams->leftColontitul;
+            }
+        }
         else
             deltaX = calcParams->rightPosition - string->width - calcParams->leftColontitul;
         if(deltaX < 0)
             deltaX = 0;
     }
-	if(calcParams->paragraphStyle->m_align & EjParagraphStyle::AlignHCenter)
+    if(calcParams->paragraphStyle->m_align & EjParagraphStyle::AlignHCenter)
     {
         //                deltaX = (m_width) * 0.236 * k_scale / scaleSize - cur_string->width - (leftColontitul + rightColontitul) * 0.236;
-        if(calcParams->isViewDoc)
-            deltaX = calcParams->rightPosition - string->width - page->leftMarging - calcParams->leftColontitul;
+        if(calcParams->isViewDoc){
+            if (page->orientation == EjDocLayout::ORN_PORTRAIT){
+                deltaX = calcParams->rightPosition - string->width - page->leftMarging - calcParams->leftColontitul;
+            }
+            else{
+                deltaX = calcParams->rightPosition - string->width - page->bottomMarging - calcParams->leftColontitul;
+            }
+        }
         else
             deltaX = calcParams->rightPosition - string->width - calcParams->leftColontitul;
         deltaX *= 0.5;
@@ -4934,8 +7658,10 @@ void EjTextControl::calcString(JString *string, Page *page, EjCalcParams *calcPa
 
     if(string->startBlock < 0)
     {
-		string->height = metric.height();
+        QFontMetrics drawMetric = getDrawMetrics(activeIndex);
+        string->height = drawMetric.height();
         string->width = 0;
+
         return;
     }
     EjBlock *cur_Block = doc->lBlocks->at(string->startBlock);
@@ -4981,37 +7707,57 @@ void EjTextControl::calcString(JString *string, Page *page, EjCalcParams *calcPa
         string->y = calcParams->baseY;
         calcParams->baseY += string->height;
     }
+    //    baseY += height;
 }
 
 void EjTextControl::addString(EjCalcParams *calcParams, int indexBlock)
 {
-    Page *cur_page = calcParams->control->doc->lPages->at(calcParams->index_page);
-    JString *cur_string = calcParams->control->doc->lStrings->at(calcParams->index_string);
+    EjPage *cur_page = calcParams->control->doc->lPages->at(calcParams->index_page);
+    EjString *cur_string = calcParams->control->doc->lStrings->at(calcParams->index_string);
 
-    if(calcParams->isViewDoc && cur_string->y > cur_page->y + cur_page->height - cur_page->bottomMarging)
+    int pageWorkHeight = 0;
+    if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+        pageWorkHeight = cur_page->GetNormalHeight() - cur_page->bottomMarging;
+    }
+    else{
+         pageWorkHeight = cur_page->GetNormalHeight() - cur_page->rightMarging;
+    }
+
+    if(calcParams->isViewDoc && cur_string->y > cur_page->y + pageWorkHeight)
     {
-        calcParams->baseY = cur_page->y + cur_page->height + 1500;
+        //                baseY += (cur_page->bottomMarging)/100 + 25;
+        calcParams->baseY = cur_page->y + cur_page->GetNormalHeight() + 1500;
         {
-            cur_page = new Page;
+            cur_page = new EjPage;
             cur_page->width = m_defaultPageWidth;
             cur_page->height = m_defaultPageHeight;
+            cur_page->orientation = m_defaultOrientation;
             cur_page->y = calcParams->baseY;
             cur_page->x = leftColontitul;
             doc->lPages->append(cur_page);
         }
         calcParams->index_page++;
-        calcParams->baseY += (cur_page->topMarging);
+        if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+             calcParams->baseY += (cur_page->topMarging);
+        }
+        else{
+            calcParams->baseY += (cur_page->leftMarging);
+        }
+
         for(int i = cur_string->startBlock; i <= cur_string->endBlock; i++)
         {
+//            doc->lBlocks->at(i)->y = calcParams->baseY + cur_string->height - doc->lBlocks->at(i)->height;
             doc->lBlocks->at(i)->y = calcParams->baseY;
         }
         cur_string->y = calcParams->baseY;
         calcParams->baseY += cur_string->height;
     }
+//    calcParams->baseY += calcParams->interval;
+
     calcParams->index_string++;
     if(calcParams->index_string > doc->lStrings->count() - 1)
     {
-        doc->lStrings->append(new JString());
+        doc->lStrings->append(new EjString());
     }
     doc->lStrings->at(calcParams->index_string)->startBlock = indexBlock;
     doc->lStrings->at(calcParams->index_string)->endBlock = indexBlock;
@@ -5019,12 +7765,20 @@ void EjTextControl::addString(EjCalcParams *calcParams, int indexBlock)
     {
         doc->lStrings->at(calcParams->index_string)->startBlock = doc->lBlocks->count() - 1;
         doc->lStrings->at(calcParams->index_string)->endBlock = doc->lBlocks->count() - 1;
+        //                continue;
     }
     cur_string = doc->lStrings->at(calcParams->index_string);
     cur_string->width = 0;
 
-    if(m_isViewDoc)
-        calcParams->baseX = leftColontitul + cur_page->leftMarging;
+    if(m_isViewDoc){
+        if (cur_page->orientation == EjDocLayout::ORN_PORTRAIT){
+            calcParams->baseX = leftColontitul + cur_page->leftMarging;
+        }
+        else{
+            calcParams->baseX = leftColontitul + cur_page->bottomMarging;
+        }
+    }
+    //                x =  cur_page->leftMarging;
     else
         calcParams->baseX = leftColontitul;
 
@@ -5033,6 +7787,7 @@ void EjTextControl::addString(EjCalcParams *calcParams, int indexBlock)
 int EjTextControl::startText(int index) const
 {
    int res = index;
+//   int lastText = index;
    for(int i = index; i > -1; i--)
    {
        int type = doc->lBlocks->at(i)->type;
@@ -5068,8 +7823,8 @@ bool EjTextControl::isEndText(int index) const
     bool res = false;
     if(index > -1 && index < doc->lBlocks->count() && doc->lBlocks->at(index)->type == TEXT)
     {
-		EjTextBlock *block = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(index));
-		if(index == activeIndex && block && block->text.length() <= position)
+        EjTextBlock *block = dynamic_cast<EjTextBlock*>(doc->lBlocks->at(index));
+        if(index == activeIndex && block && block->text.count() <= position)
         {
             res = true;
             index++;
@@ -5078,10 +7833,10 @@ bool EjTextControl::isEndText(int index) const
     return res;
 }
 
-JString *EjTextControl::wichString(int index)
+EjString *EjTextControl::wichString(int index)
 {
-    JString *resString = 0;
-    foreach(JString *curString, *doc->lStrings)
+    EjString *resString = 0;
+    foreach(EjString *curString, *doc->lStrings)
     {
         if(index >= curString->startBlock && index <= curString->endBlock)
             resString = curString;

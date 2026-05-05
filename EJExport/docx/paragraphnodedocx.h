@@ -2,7 +2,7 @@
 #define PARAGRAPHNODEDOCX_H
 
 #include "paragraphnode.h"
-#include "common.h"
+#include "ejcommon.h"
 
 class ParagraphNodeDocx: public ParagraphNode
 {

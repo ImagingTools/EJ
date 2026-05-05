@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef EJBASEUJFCONVERTOR_H
 #define EJBASEUJFCONVERTOR_H
 #include "ejcommon.h"

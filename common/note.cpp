@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "note.h"
 #ifndef WIN32
 //#include <uuid/uuid.h>
@@ -362,7 +369,7 @@ void Task::loadLinks(bool force)
     quint32 lastOffset;
     qint16 lastKey;
     quint16 lastVer;
-    LinkProp *curLink;
+    EjLinkProp *curLink;
 
     delete task.m_doc;
     task.m_doc = nullptr;
@@ -398,7 +405,7 @@ void Task::loadLinks(bool force)
             if(curLink->m_extTask && !force)
                 continue;
 //            if(!curLink->m_extDoc)
-//                curLink->m_extDoc = new Document(curLink->keyUuid());
+//                curLink->m_extDoc = new EjDocument(curLink->keyUuid());
             if(!curLink->m_extTask)
                 curLink->m_extTask = new Task();
             curLink->m_extTask->key = curLink->keyUuid();
@@ -419,8 +426,8 @@ void Task::reloadLink(QUuid key)
     quint32 lastOffset;
     qint16 lastKey;
     quint16 lastVer;
-    LinkProp *curLink;
-    QList<LinkProp*>lLinks;
+    EjLinkProp *curLink;
+    QList<EjLinkProp*>lLinks;
     QList<Task*>lTaskLinks;
     QList<Reply*>lReplies;
     Task *task;
@@ -561,11 +568,11 @@ void Task::addReply(int status, QString comment)
 
 }
 
-void Task::setDocDefaults(DocLayout *docLayout, DocMargings *docMargings)
+void Task::setDocDefaults(EjDocLayout *docLayout, EjDocMargings *docMargings)
 {
     int securityBak = this->security;
     this->security = EDIT;
-    AttrProp *attrProp = this->document()->attributes();
+    EjAttrProp *attrProp = this->document()->attributes();
     attrProp->setDocLayout(docLayout);
     attrProp->setDocMargings(docMargings);
     ext_storage->saveTasksBody(this);
@@ -586,7 +593,7 @@ Reply* Task::myReply()
     return reply;
 }
 
-void Task::setChat(Document *doc)
+void Task::setChat(EjDocument *doc)
 {
     if(!doc)
         return;
@@ -907,15 +914,15 @@ QVariant Task::inputDocs()
     {
         dataList.append(m_inputLinks[i]);
     }
-//    LinkProp *curLink;
+//    EjLinkProp *curLink;
 
 //    if(!m_doc->m_attrProp)
 //        return QVariant();
 //    loadLinks(true);
 //    for(int i = 0; i < m_doc->m_attrProp->m_lLinks.count(); i++) {
 //        curLink = m_doc->m_attrProp->m_lLinks.at(i);
-////        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_INPUT && curLink->m_extTask->m_repeatModels.activeCategory() == 0)
-//        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_INPUT)
+////        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_INPUT && curLink->m_extTask->m_repeatModels.activeCategory() == 0)
+//        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_INPUT)
 //        {
 ////            if(curLink->m_extTask->title() == "" && curLink->m_extTask->offset_history > 0)
 ////            {
@@ -942,14 +949,14 @@ QVariant Task::outputDocs()
         if(m_outputLinks[i]->isDocument())
             dataList.append(m_outputLinks[i]);
     }
-//    LinkProp *curLink;
+//    EjLinkProp *curLink;
 //    if(!m_doc->m_attrProp)
 //        return QVariant();
 //    loadLinks(true);
 //    for(int i = 0; i < m_doc->m_attrProp->m_lLinks.count(); i++) {
 //        curLink = m_doc->m_attrProp->m_lLinks.at(i);
-////        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_OUTPUT && curLink->m_extTask->m_repeatModels.activeCategory() == 0)
-//        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_OUTPUT)
+////        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_OUTPUT && curLink->m_extTask->m_repeatModels.activeCategory() == 0)
+//        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_OUTPUT)
 //            dataList.append(curLink->m_extTask);
 //    }
 //    //    qSort(dataList.begin(), dataList.end(), caseTagMoreThan);
@@ -967,15 +974,15 @@ QVariant Task::subtasks()
             dataList.append(m_outputLinks[i]);
         }
     }
-//    LinkProp *curLink;
+//    EjLinkProp *curLink;
 
 //    if(!m_doc->m_attrProp)
 //        return QVariant();
 //    loadLinks(true);
 //    for(int i = 0; i < m_doc->m_attrProp->m_lLinks.count(); i++) {
 //        curLink = m_doc->m_attrProp->m_lLinks.at(i);
-////        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_OUTPUT && curLink->m_extTask->m_repeatModels.activeCategory() > 0)
-//          if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_OUTPUT_TASK)
+////        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_OUTPUT && curLink->m_extTask->m_repeatModels.activeCategory() > 0)
+//          if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_OUTPUT_TASK)
 //              dataList.append(curLink->m_extTask);
 //    }
 //    //    qSort(dataList.begin(), dataList.end(), caseTagMoreThan);
@@ -1090,7 +1097,7 @@ void Task::setTitle(QString source)
 ////        dataStream << lBlocks[i]->page << lBlocks[i]->width << lBlocks[i]->height;
 //        switch (src->lBlocks[i]->type) {
 //        case TEXT:
-//            dataStream << static_cast<TextBlock*>(src->lBlocks[i])->text;
+//            dataStream << static_cast<EjTextBlock*>(src->lBlocks[i])->text;
 //            break;
 //        default:
 //            break;
@@ -1123,8 +1130,8 @@ void Task::setTitle(QString source)
 //        dataStream >> type >> style;
 //        switch (type) {
 //        case TEXT:
-//            curBlock = new TextBlock();
-//            dataStream >> static_cast<TextBlock*>(curBlock)->text;
+//            curBlock = new EjTextBlock();
+//            dataStream >> static_cast<EjTextBlock*>(curBlock)->text;
 //            break;
 //        default:
 //            curBlock = new Block();
@@ -1532,7 +1539,7 @@ Task::Task(QObject *parent) :
     m_fromTime = 0;
     m_registryTime = 0;
     m_newChats = 0;
-    m_doc = new Document();
+    m_doc = new EjDocument();
     m_index = -1;
     baseTask = NULL;
 
@@ -1843,7 +1850,7 @@ void Task::reload()
 //    emit subTasksChanged();
 }
 
-Document *Task::document()
+EjDocument *Task::document()
 {
     m_doc->setParent(this);
     return m_doc;
@@ -1889,15 +1896,15 @@ bool Task::remAttach(int index)
 bool Task::isContainsReplies()
 {
     QList<QObject*> dataList;
-    LinkProp *curLink;
+    EjLinkProp *curLink;
     if(!m_doc->m_attrProp)
         return false;
     bool retVal = false;
 //    loadLinks();
 //    for(int i = 0; i < m_doc->m_attrProp->m_lLinks.count(); i++) {
 //        curLink = m_doc->m_attrProp->m_lLinks.at(i);
-////        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_OUTPUT && curLink->m_extTask->m_repeatModels.activeCategory() == 0)
-//        if(curLink->m_extTask && curLink->typeLink() == LinkProp::LINK_OUTPUT)
+////        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_OUTPUT && curLink->m_extTask->m_repeatModels.activeCategory() == 0)
+//        if(curLink->m_extTask && curLink->typeLink() == EjLinkProp::LINK_OUTPUT)
 //        {
 //            if(!curLink->m_extTask->m_replies.isEmpty())
 //                retVal = true;
@@ -2335,9 +2342,9 @@ bool Task::getRepeatProperties()
     return true;
 }
 
-void Task::findLink(const QUuid &key, QList<LinkProp *> &lLinks)
+void Task::findLink(const QUuid &key, QList<EjLinkProp *> &lLinks)
 {
-    LinkProp *curLink;
+    EjLinkProp *curLink;
     if(m_doc && m_doc->m_attrProp)
     {
         for(int i = 0; i < m_doc->m_attrProp->m_lLinks.count(); i++) {
@@ -2539,7 +2546,7 @@ QVariant TasksFilterModel::data(const QModelIndex &index, int role) const
                     cur_block = task.m_doc->lBlocks->at(i);
                     if(cur_block->type == TEXT)
                     {
-                        if(((TextBlock*)cur_block)->text.contains(m_searchString, Qt::CaseInsensitive))
+                        if(((EjTextBlock*)cur_block)->text.contains(m_searchString, Qt::CaseInsensitive))
                         {
                             res = true;
                             break;

@@ -29,7 +29,7 @@ public:
     virtual void afterCalc(CalcParams *calcParams) override;
 
     QUuid key;
-    QList<MapLabelBlock*> *getLabels() { return &lLabels; }
+    QList<EjMapLabelBlock*> *getLabels() { return &lLabels; }
 
     enum NumProp {
         MAP_COORDS = 0,
@@ -38,7 +38,7 @@ public:
 
 protected:
     QList<Block*> *lBlocks;
-    QList<MapLabelBlock*> lLabels;
+    QList<EjMapLabelBlock*> lLabels;
     QMap<qint8,Block*> mProperties;
     QSGTexture *m_texture;
 
@@ -68,7 +68,7 @@ public:
     Q_INVOKABLE bool isViewMode();
     Block *newBlock(int tid) override;
     ItemBlock* newItem(Block *block, CalcParams *calcParams, QQuickItem *parent) override;
-    QQuickItem* createDefault(int index, Document *doc, QQuickItem *parent) override;
+    QQuickItem* createDefault(int index, EjDocument *doc, QQuickItem *parent) override;
     void registerQMLTypes(QQmlContext *ctxt) override;
 //    void setActiveBlock(Block* block) override { m_activeBlock = block; }
 private:

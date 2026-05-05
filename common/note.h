@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #ifndef NOTE_H
 #define NOTE_H
 #include <QUuid>
@@ -16,7 +23,7 @@
 #include "notifymodel.h"
 #include "attachmentsmodel.h"
 #include "docattributes.h"
-#include "common.h"
+#include "ejcommon.h"
 #include "ej_interfaces.h"
 
 //#include <QJsonObject>
@@ -332,20 +339,20 @@ signals:
 ////    void clear();
 
 //    QList<Block*> *lBlocks;
-////    QList<JString*> *lStrings;
-////    QList<Page*> *lPages;
-////    QList<FragmentBlock*> *lFragments;
+////    QList<EjString*> *lStrings;
+////    QList<EjPage*> *lPages;
+////    QList<EjFragmentBlock*> *lFragments;
 ////    QList<TableBlock*> *lTables;
-////    QList<BaseStyle *> *lStyles;
+////    QList<EjBaseStyle *> *lStyles;
 //////    QString title;
 //////    QStringList lTags;
 ////    QDateTime dt_modify;
 ////    quint32 user_key;
 ////    Q_INVOKABLE QDateTime getTime() { return dt_modify; }
 ////    Q_INVOKABLE quint32 getUserKey() { return user_key; }
-////    BaseStyle *getStyle(int num);
-////    void copy(Document *doc);
-////    void move(Document *doc);
+////    EjBaseStyle *getStyle(int num);
+////    void copy(EjDocument *doc);
+////    void move(EjDocument *doc);
 //};
 
 
@@ -493,9 +500,9 @@ public:
     Q_INVOKABLE quint32 getAuthorId() { return creator_id; }
     Q_INVOKABLE void sign(int status, QString comment);
     Q_INVOKABLE void addReply(int status, QString comment);
-    Q_INVOKABLE void setDocDefaults(DocLayout *docLayout, DocMargings *docMargings);
+    Q_INVOKABLE void setDocDefaults(EjDocLayout *docLayout, EjDocMargings *docMargings);
     Q_INVOKABLE Reply* myReply();
-    Q_INVOKABLE void setChat(Document *doc);
+    Q_INVOKABLE void setChat(EjDocument *doc);
     Q_INVOKABLE void setResponsible(qint32 id);
     Q_INVOKABLE qint32 responsible();
     Q_INVOKABLE QString nameResponsible();
@@ -524,7 +531,7 @@ public:
     Q_INVOKABLE bool isOneDay();
     Q_INVOKABLE bool isAllIntervalDay();
     Q_INVOKABLE void reload();
-    Q_INVOKABLE Document *document();
+    Q_INVOKABLE EjDocument *document();
     Q_INVOKABLE bool attachFile(QString path);
     Q_INVOKABLE bool openAttach(int authorId, int index);
     Q_INVOKABLE bool remAttach(int index);
@@ -598,8 +605,8 @@ public:
     QList<Task*> m_inputLinks;
     QList<Task*> m_outputLinks;
     //QList<TaskProperty*> m_usersProps;
-    Document *m_doc;
-//    QList<BaseStyle*> lStyles;
+    EjDocument *m_doc;
+//    QList<EjBaseStyle*> lStyles;
 
     QUuid key;
     qint16 patch_key;
@@ -674,7 +681,7 @@ signals:
     void getFullTask(Task *task);
 
 protected:
-    void findLink(const QUuid &key, QList<LinkProp *> &lLinks);
+    void findLink(const QUuid &key, QList<EjLinkProp *> &lLinks);
     void findTaskLink(const QUuid &key, QList<Task *> &lLinks, QList<Reply *> &lReplies);
 };
 

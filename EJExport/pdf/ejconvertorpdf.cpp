@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "ejconvertorpdf.h"
 
 #include "imageblock.h"
@@ -7,6 +14,7 @@
 
 #include <QtCore>
 
+const QString EjConvertorPdf::format = "pdf";
 
 bool EjConvertorPdf::convert(EjDocument *doc, const QString &file_name)
 {

@@ -1,6 +1,6 @@
 #ifndef TASKSGROUPBLOCKS_H
 #define TASKSGROUPBLOCKS_H
-#include "tableblocks.h"
+#include "ejtableblocks.h"
 
 class TasksGroupDelegate;
 
@@ -9,7 +9,7 @@ class TasksGroupBlock : public GroupBlock
 public:
     TasksGroupBlock();
     ~TasksGroupBlock();
-    TasksGroupBlock(Document *doc, int index);
+    TasksGroupBlock(EjDocument *doc, int index);
     virtual bool isGlassy() override { return true; }
 
 //    virtual void createDefault(QList<Block *> *lBlocks, int index) override;

@@ -22,14 +22,14 @@ public:
     virtual void childCalc(Block *child) override;
     virtual void afterCalc(CalcParams *calcParams) override;
     void calcBlock(int &index, CalcParams *calcParams) override;
-    void calcString(JString *string, Page *page, CalcParams *calcParams);
+    void calcString(EjString *string, EjPage *page, CalcParams *calcParams);
     virtual bool isGlassy() override { return true; }
 
 
     QQuickItem *getItem(int &index, CalcParams *calcParams, QQuickItem *parentItem) override;
 
 
-//    QList<MapLabelBlock*> *getLabels() { return &lLabels; }
+//    QList<EjMapLabelBlock*> *getLabels() { return &lLabels; }
 
 //protected:
     QUuid key;
@@ -62,7 +62,7 @@ public:
     QString name() const override { return QString("Text block"); }
     Block *newBlock(int tid) override;
     ItemBlock* newItem(Block *block, CalcParams *calcParams, QQuickItem *parent) override;
-    QQuickItem* createDefault(int index, Document *doc, QQuickItem *parent) override;
+    QQuickItem* createDefault(int index, EjDocument *doc, QQuickItem *parent) override;
     Q_INVOKABLE QQuickItem* getActiveViewItem(int vid, QQuickItem *parent) override;
     Q_INVOKABLE QQuickItem* getActivePropItem(int vid, QQuickItem *parent, QString command, QString data) override;
     int menuActivate(QString command, QString data, PopupMenuModel &popupModel, e_statusMode statusMode) override; // 0 - not active, 1 - item active, 2 -  menu active

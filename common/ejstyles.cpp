@@ -1,3 +1,10 @@
+/********************************************************************************
+**
+**  Copyright (C) 2014 Victor Shcherbina
+**  This file is part of the EasyJotter
+**
+********************************************************************************/
+
 #include "../include/ejstyles.h"
 #include "../include/ejdocument.h"
 #include "ejtextcontrol.h"

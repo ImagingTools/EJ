@@ -3,16 +3,16 @@
 
 #include "observer.h"
 #include "docx/cellnodedocx.h"
-#include "tableblocks.h"
+#include "ejtableblocks.h"
 #include "export_global.h"
 
 class ObserverDocx: public Observer
 {
 public:
     ObserverDocx();
-    QList<QDomElement> observe(Document *doc);
+    QList<QDomElement> observe(EjDocument *doc);
     QDomDocument glue(QList<QDomElement> nodesList);
-    QMap<QString, int> changeStyle(QMap<QString, int> styles, NumStyleBlock *nsb); //non decl
+    QMap<QString, int> changeStyle(QMap<QString, int> styles, EjNumStyleBlock *nsb); //non decl
     QMap<QString, int> border(QMap<QString, int> styles, CellStyle *cellStyle);
     bool unzipDocument(QString format);
     bool archved(QString pathFile, QString zipPath);
